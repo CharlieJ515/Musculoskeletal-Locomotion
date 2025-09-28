@@ -1,9 +1,11 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 import torch
 
+from . import StreamObject
+
 @dataclass
-class Transition:
+class Transition(StreamObject):
     """
     A single transition stored in the replay buffer.
 
@@ -23,8 +25,6 @@ class Transition:
     reward: torch.Tensor
     next_obs: torch.Tensor
     done: torch.Tensor
-    
-    _stream: Optional[torch.cuda.Stream] = field(default=None)
 
     def __post_init__(self):
         # check device
@@ -80,11 +80,7 @@ class Transition:
         """
         return self.reward.shape
 
-    def to(
-        self,
-        device: torch.device,
-        non_blocking: bool = False,
-    ) -> "Transition":
+    def to(self, device: torch.device, non_blocking: bool = False) -> "Transition":
         """
         Move all tensors to the given device and return a new Transition.
 
@@ -95,91 +91,52 @@ class Transition:
 
         :return: A new Transition on the target device.
         :rtype: Transition
-
         """
-
         if device == self.device:
             return self
 
-        # cuda -> cuda, cpu -> cuda
-        if device.type == "cuda":
-            s = torch.cuda.Stream(device)
-            if self._stream is not None:
-                ev = torch.cuda.Event()
-                ev.record(self._stream)
-                ev.wait(s)
-
-            with torch.cuda.stream(s):
-                new = Transition(
-                    obs=self.obs.to(device, non_blocking=non_blocking),
-                    action=self.action.to(device, non_blocking=non_blocking),
-                    reward=self.reward.to(device, non_blocking=non_blocking),
-                    next_obs=self.next_obs.to(device, non_blocking=non_blocking),
-                    done=self.done.to(device, non_blocking=non_blocking),
-                    _stream=s,
-                )
-            return new
-
-        # cuda -> cpu
-        else:
-            s = self._stream or torch.cuda.Stream(self.device)
-            with torch.cuda.stream(s):
-                return Transition(
-                    obs=self.obs.to(device, non_blocking=non_blocking),
-                    action=self.action.to(device, non_blocking=non_blocking),
-                    reward=self.reward.to(device, non_blocking=non_blocking),
-                    next_obs=self.next_obs.to(device, non_blocking=non_blocking),
-                    done=self.done.to(device, non_blocking=non_blocking),
-                    _stream=s,
-                )
-
-    def wait(self, stream:Optional[torch.cuda.Stream]=None) -> None:
-        """
-        Ensure that `stream` (or the current stream if None) waits until all
-        work on this object's stream completes.
-
-        :param stream: Target CUDA stream that must wait for the producing stream.
-        :type stream: Optional[torch.cuda.Stream]
-        :return: None
-        :rtype: None
-        """
-        if self._stream is None:
-            return
-
-        if self.device == "cpu":
-            self._stream.synchronize()
-            self._stream = None
-            return
-
-        s = stream or torch.cuda.current_stream()
-        if s.device == self._stream.device:
-            s.wait_stream(self._stream)
-        else:
-            ev = torch.cuda.Event()
-            ev.record(self._stream)
-            ev.wait(s)
-
-        self._stream = None
-        return
-
-
+        stream_device = device if device.type=="cuda" else self.device
+        with self.stream(stream_device):
+            new = Transition(
+                obs=self.obs.to(device, non_blocking=non_blocking),
+                action=self.action.to(device, non_blocking=non_blocking),
+                reward=self.reward.to(device, non_blocking=non_blocking),
+                next_obs=self.next_obs.to(device, non_blocking=non_blocking),
+                done=self.done.to(device, non_blocking=non_blocking),
+            )
+        new._stream = self._stream
+        new._event = self._event
+        return new
+            
     def to_batch(self) -> "TransitionBatch":
         """
         Convert this single transition into a TransitionBatch of size 1.
 
+        Note:
+            We do NOT call `wait()` here. `unsqueeze` only creates a view of the
+            original tensor, so no GPU work is launched.  Synchronizing here would
+            force the current (often default) stream to wait, which could serialize
+            unrelated work and reduce overlap.
+
+            Instead we propagate the producer's event to the new batch so that
+            downstream consumers can wait on it in their chosen stream if needed.
+
         :return: TransitionBatch with leading dimension 1.
         :rtype: TransitionBatch
         """
-        return TransitionBatch(
+        batch = TransitionBatch(
             obs=self.obs.unsqueeze(0),
             actions=self.action.unsqueeze(0),
             rewards=self.reward.unsqueeze(0),
             next_obs=self.next_obs.unsqueeze(0),
             dones=self.done.unsqueeze(0),
         )
+        batch._stream = self._stream
+        batch._event = self._event
+        return batch
 
 @dataclass
-class TransitionBatch:
+class TransitionBatch(StreamObject):
     """
     A batch of transitions sampled from the replay buffer.
 
@@ -199,8 +156,6 @@ class TransitionBatch:
     rewards: torch.Tensor
     next_obs: torch.Tensor
     dones: torch.Tensor
-
-    _stream: Optional[torch.cuda.Stream] = field(default=None)
 
     def __post_init__(self):
         """
@@ -290,63 +245,15 @@ class TransitionBatch:
         if device == self.device:
             return self
 
-        # cuda -> cuda, cpu -> cuda
-        if device.type == "cuda":
-            s = torch.cuda.Stream(device)
-            if self._stream is not None:
-                ev = torch.cuda.Event()
-                ev.record(self._stream)
-                ev.wait(s)
-
-            with torch.cuda.stream(s):
-                new = TransitionBatch(
-                    obs=self.obs.to(device, non_blocking=non_blocking),
-                    actions=self.actions.to(device, non_blocking=non_blocking),
-                    rewards=self.rewards.to(device, non_blocking=non_blocking),
-                    next_obs=self.next_obs.to(device, non_blocking=non_blocking),
-                    dones=self.dones.to(device, non_blocking=non_blocking),
-                    _stream=s,
-                )
-            return new
-
-        # cuda -> cpu
-        else:
-            s = self._stream or torch.cuda.Stream(self.device)
-            with torch.cuda.stream(s):
-                return TransitionBatch(
-                    obs=self.obs.to(device, non_blocking=non_blocking),
-                    actions=self.actions.to(device, non_blocking=non_blocking),
-                    rewards=self.rewards.to(device, non_blocking=non_blocking),
-                    next_obs=self.next_obs.to(device, non_blocking=non_blocking),
-                    dones=self.dones.to(device, non_blocking=non_blocking),
-                    _stream=s,
-                )
-
-    def wait(self, stream: Optional[torch.cuda.Stream] = None) -> None:
-        """
-        Ensure that `stream` (or the current stream if None) waits until all
-        work on this batch's producing stream completes.
-
-        :param stream: Target CUDA stream that must wait for the producing stream.
-        :type stream: Optional[torch.cuda.Stream]
-        :return: None
-        :rtype: None
-        """
-        if self._stream is None:
-            return
-
-        if self.device == torch.device("cpu"):
-            self._stream.synchronize()
-            self._stream = None
-            return
-
-        s = stream or torch.cuda.current_stream(self.device)
-        if s.device == self._stream.device:
-            s.wait_stream(self._stream)
-        else:
-            ev = torch.cuda.Event()
-            ev.record(self._stream)
-            ev.wait(s)
-
-        self._stream = None
-        return
+        stream_device = device if device.type == "cuda" else self.device
+        with self.stream(stream_device):
+            new = TransitionBatch(
+                obs=self.obs.to(device, non_blocking=non_blocking),
+                actions=self.actions.to(device, non_blocking=non_blocking),
+                rewards=self.rewards.to(device, non_blocking=non_blocking),
+                next_obs=self.next_obs.to(device, non_blocking=non_blocking),
+                dones=self.dones.to(device, non_blocking=non_blocking),
+            )
+        new._stream = self._stream
+        new._event = self._event
+        return new
