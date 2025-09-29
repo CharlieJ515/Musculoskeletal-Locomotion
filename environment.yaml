@@ -1,7 +1,7 @@
 name: osim_env
 channels:
-  - opensim-org
   - conda-forge
+  - opensim-org
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=main
