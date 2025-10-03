@@ -1,12 +1,36 @@
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Union, Tuple
 import torch
-from src.types import Transition, TransitionBatch
+from utils import Transition, TransitionBatch
 
 class BaseReplayBuffer(ABC):
     """
     Abstract interface for a replay buffer.
     """
+    def __init__(
+        self,
+        capacity: int,
+        obs_shape: Tuple[int, ...],
+        act_shape: Tuple[int, ...],
+        reward_shape: Tuple[int, ...] = (1,),  # scalar reward => (1,)
+        *,
+        device: torch.device = torch.device("cpu"),
+        obs_dtype: torch.dtype = torch.float32,
+        act_dtype: torch.dtype = torch.float32,
+        rew_dtype: torch.dtype = torch.float32,
+    ) -> None:
+        """
+        Initialize the replay buffer with preallocated storage.
+
+        :param capacity: Maximum number of transitions the buffer can hold.
+        :param obs_shape: Shape of a single observation.
+        :param act_shape: Shape of a single action.
+        :param reward_shape: Shape of a single reward (default: scalar (1,)).
+        :param obs_dtype: Data type for storing observations.
+        :param act_dtype: Data type for storing actions.
+        :param rew_dtype: Data type for storing rewards.
+        :param device: Device to store data on (CPU or GPU).
+        """
 
     @abstractmethod
     def add(
@@ -68,15 +92,4 @@ class BaseReplayBuffer(ABC):
         """
         :return: Device on which the buffer’s data is stored.
         :rtype: torch.device
-        """
-
-    @abstractmethod
-    def to(self, device: torch.device) -> "BaseReplayBuffer":
-        """
-        Move the buffer to a given device.
-
-        :param device: Target device (e.g., ``torch.device('cuda')``).
-        :type device: torch.device
-        :return: Self, with data moved to the specified device.
-        :rtype: BaseReplayBuffer
         """
