@@ -6,10 +6,9 @@ import torch
 
 from rl.replay_buffer.base import BaseReplayBuffer
 from utils.transition import Transition, TransitionBatch
-from utils.stream import StreamObject
 
 
-class ReplayBuffer(BaseReplayBuffer, StreamObject):
+class ReplayBuffer(BaseReplayBuffer):
     """
     Plain uniform replay buffer with ring-buffer storage and uniform sampling.
     Stores transitions as preallocated tensors for speed.
@@ -100,32 +99,30 @@ class ReplayBuffer(BaseReplayBuffer, StreamObject):
 
         # ring buffer write (handle wrap-around)
         end = self._ptr + B
-        with self.enqueue(self._device):
-            batch.sync(obj=self)
-            if end <= self.capacity:
-                sl = slice(self._ptr, end)
-                self._obs[sl] = batch.obs
-                self._actions[sl] = batch.actions
-                self._rewards[sl] = batch.rewards
-                self._next_obs[sl] = batch.next_obs
-                self._dones[sl] = batch.dones
-            else:
-                first = self.capacity - self._ptr
-                second = B - first
-                # first chunk
-                sl1 = slice(self._ptr, self.capacity)
-                self._obs[sl1] = batch.obs[:first]
-                self._actions[sl1] = batch.actions[:first]
-                self._rewards[sl1] = batch.rewards[:first]
-                self._next_obs[sl1] = batch.next_obs[:first]
-                self._dones[sl1] = batch.dones[:first]
-                # wrap chunk
-                sl2 = slice(0, second)
-                self._obs[sl2] = batch.obs[first:]
-                self._actions[sl2] = batch.actions[first:]
-                self._rewards[sl2] = batch.rewards[first:]
-                self._next_obs[sl2] = batch.next_obs[first:]
-                self._dones[sl2] = batch.dones[first:]
+        if end <= self.capacity:
+            sl = slice(self._ptr, end)
+            self._obs[sl] = batch.obs
+            self._actions[sl] = batch.actions
+            self._rewards[sl] = batch.rewards
+            self._next_obs[sl] = batch.next_obs
+            self._dones[sl] = batch.dones
+        else:
+            first = self.capacity - self._ptr
+            second = B - first
+            # first chunk
+            sl1 = slice(self._ptr, self.capacity)
+            self._obs[sl1] = batch.obs[:first]
+            self._actions[sl1] = batch.actions[:first]
+            self._rewards[sl1] = batch.rewards[:first]
+            self._next_obs[sl1] = batch.next_obs[:first]
+            self._dones[sl1] = batch.dones[:first]
+            # wrap chunk
+            sl2 = slice(0, second)
+            self._obs[sl2] = batch.obs[first:]
+            self._actions[sl2] = batch.actions[first:]
+            self._rewards[sl2] = batch.rewards[first:]
+            self._next_obs[sl2] = batch.next_obs[first:]
+            self._dones[sl2] = batch.dones[first:]
 
         self._ptr = (self._ptr + B) % self.capacity
         self._size = min(self._size + B, self.capacity)
@@ -162,25 +159,24 @@ class ReplayBuffer(BaseReplayBuffer, StreamObject):
                 stacklevel=2
             )
 
-        with self.enqueue(self._device):
-            if pin_memory and self._device.type == "cpu":
-                obs     = torch.empty((batch_size, *self._obs_shape), dtype=self._obs.dtype,     pin_memory=True)
-                actions = torch.empty((batch_size, *self._act_shape), dtype=self._actions.dtype, pin_memory=True)
-                rewards = torch.empty((batch_size, *self._rew_shape), dtype=self._rewards.dtype, pin_memory=True)
-                next_obs= torch.empty((batch_size, *self._obs_shape), dtype=self._next_obs.dtype,pin_memory=True)
-                dones   = torch.empty((batch_size,),                  dtype=self._dones.dtype,   pin_memory=True)
+        if pin_memory and self._device.type == "cpu":
+            obs     = torch.empty((batch_size, *self._obs_shape), dtype=self._obs.dtype,     pin_memory=True)
+            actions = torch.empty((batch_size, *self._act_shape), dtype=self._actions.dtype, pin_memory=True)
+            rewards = torch.empty((batch_size, *self._rew_shape), dtype=self._rewards.dtype, pin_memory=True)
+            next_obs= torch.empty((batch_size, *self._obs_shape), dtype=self._next_obs.dtype,pin_memory=True)
+            dones   = torch.empty((batch_size,),                  dtype=self._dones.dtype,   pin_memory=True)
 
-                torch.index_select(self._obs,      0, idx, out=obs)
-                torch.index_select(self._actions,  0, idx, out=actions)
-                torch.index_select(self._rewards,  0, idx, out=rewards)
-                torch.index_select(self._next_obs, 0, idx, out=next_obs)
-                torch.index_select(self._dones,    0, idx, out=dones)
-            else:
-                obs      = self._obs.index_select(0, idx)
-                actions  = self._actions.index_select(0, idx)
-                rewards  = self._rewards.index_select(0, idx)
-                next_obs = self._next_obs.index_select(0, idx)
-                dones    = self._dones.index_select(0, idx)
+            torch.index_select(self._obs,      0, idx, out=obs)
+            torch.index_select(self._actions,  0, idx, out=actions)
+            torch.index_select(self._rewards,  0, idx, out=rewards)
+            torch.index_select(self._next_obs, 0, idx, out=next_obs)
+            torch.index_select(self._dones,    0, idx, out=dones)
+        else:
+            obs      = self._obs.index_select(0, idx)
+            actions  = self._actions.index_select(0, idx)
+            rewards  = self._rewards.index_select(0, idx)
+            next_obs = self._next_obs.index_select(0, idx)
+            dones    = self._dones.index_select(0, idx)
 
         new = TransitionBatch(
             obs=obs,
@@ -189,7 +185,6 @@ class ReplayBuffer(BaseReplayBuffer, StreamObject):
             next_obs=next_obs,
             dones=dones,
         )
-        new.set_stream(obj=self)
         return new
 
     def __len__(self) -> int:

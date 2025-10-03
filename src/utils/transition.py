@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from typing import List, Dict, Tuple
+from typing import Tuple
 import torch
 
-from utils.stream import StreamObject
 
 @dataclass
-class Transition(StreamObject):
+class Transition():
     """
     A single transition stored in the replay buffer.
 
@@ -25,7 +24,6 @@ class Transition(StreamObject):
     reward: torch.Tensor
     next_obs: torch.Tensor
     done: torch.Tensor
-    info: Dict
 
     def __post_init__(self):
         # check device
@@ -96,18 +94,13 @@ class Transition(StreamObject):
         if device == self.device:
             return self
 
-        stream_device = device if device.type=="cuda" else self.device
-        with self.enqueue(stream_device):
-            new = Transition(
-                obs=self.obs.to(device, non_blocking=non_blocking),
-                action=self.action.to(device, non_blocking=non_blocking),
-                reward=self.reward.to(device, non_blocking=non_blocking),
-                next_obs=self.next_obs.to(device, non_blocking=non_blocking),
-                done=self.done.to(device, non_blocking=non_blocking),
-                info=self.info,
-            )
-        new._stream = self._stream
-        new._event = self._event
+        new = Transition(
+            obs=self.obs.to(device, non_blocking=non_blocking),
+            action=self.action.to(device, non_blocking=non_blocking),
+            reward=self.reward.to(device, non_blocking=non_blocking),
+            next_obs=self.next_obs.to(device, non_blocking=non_blocking),
+            done=self.done.to(device, non_blocking=non_blocking),
+        )
         return new
             
     def to_batch(self) -> "TransitionBatch":
@@ -132,17 +125,14 @@ class Transition(StreamObject):
             rewards=self.reward.unsqueeze(0),
             next_obs=self.next_obs.unsqueeze(0),
             dones=self.done.unsqueeze(0),
-            infos=[self.info],
         )
-        batch._stream = self._stream
-        batch._event = self._event
         return batch
 
     def unpack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         return (self.obs, self.action, self.reward, self.next_obs, self.done)
 
 @dataclass
-class TransitionBatch(StreamObject):
+class TransitionBatch():
     """
     A batch of transitions sampled from the replay buffer.
 
@@ -162,7 +152,6 @@ class TransitionBatch(StreamObject):
     rewards: torch.Tensor
     next_obs: torch.Tensor
     dones: torch.Tensor
-    infos: List[Dict]
 
     def __post_init__(self):
         """
@@ -252,18 +241,13 @@ class TransitionBatch(StreamObject):
         if device == self.device:
             return self
 
-        stream_device = device if device.type == "cuda" else self.device
-        with self.enqueue(stream_device):
-            new = TransitionBatch(
-                obs=self.obs.to(device, non_blocking=non_blocking),
-                actions=self.actions.to(device, non_blocking=non_blocking),
-                rewards=self.rewards.to(device, non_blocking=non_blocking),
-                next_obs=self.next_obs.to(device, non_blocking=non_blocking),
-                dones=self.dones.to(device, non_blocking=non_blocking),
-                infos=self.infos,
-            )
-        new._stream = self._stream
-        new._event = self._event
+        new = TransitionBatch(
+            obs=self.obs.to(device, non_blocking=non_blocking),
+            actions=self.actions.to(device, non_blocking=non_blocking),
+            rewards=self.rewards.to(device, non_blocking=non_blocking),
+            next_obs=self.next_obs.to(device, non_blocking=non_blocking),
+            dones=self.dones.to(device, non_blocking=non_blocking),
+        )
         return new
 
     def unpack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
