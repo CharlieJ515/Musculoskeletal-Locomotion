@@ -129,6 +129,20 @@ class Transition():
         return batch
 
     def unpack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Unpack the stored transition components.
+
+        This method returns the five core elements of a transition in the order of
+        current observation, action, reward, next observation, and done flag.
+
+        :return: A tuple containing:
+                 - ``obs`` (:class:`torch.Tensor`): Current observations.
+                 - ``action`` (:class:`torch.Tensor`): Actions taken.
+                 - ``reward`` (:class:`torch.Tensor`): Rewards received after taking the actions.
+                 - ``next_obs`` (:class:`torch.Tensor`): Next observations after the actions.
+                 - ``done`` (:class:`torch.Tensor`): Boolean or float flags indicating episode termination.
+        :rtype: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        """
         return (self.obs, self.action, self.reward, self.next_obs, self.done)
 
 @dataclass
@@ -251,4 +265,18 @@ class TransitionBatch():
         return new
 
     def unpack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Unpack the stored transition components.
+
+        This method returns the five core elements of a transition in the order of
+        current observation, action, reward, next observation, and done flag.
+
+        :return: A tuple containing:
+                 - ``obs`` (:class:`torch.Tensor`): Current observations.
+                 - ``actions`` (:class:`torch.Tensor`): Actions taken.
+                 - ``rewards`` (:class:`torch.Tensor`): Rewards received after taking the actions.
+                 - ``next_obs`` (:class:`torch.Tensor`): Next observations after the actions.
+                 - ``dones`` (:class:`torch.Tensor`): Boolean or float flags indicating episode termination.
+        :rtype: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        """
         return (self.obs, self.actions, self.rewards, self.next_obs, self.dones)

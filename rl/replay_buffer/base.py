@@ -11,7 +11,7 @@ class BaseReplayBuffer(ABC):
         self,
         capacity: int,
         obs_shape: Tuple[int, ...],
-        act_shape: Tuple[int, ...],
+        action_shape: Tuple[int, ...],
         reward_shape: Tuple[int, ...] = (1,),  # scalar reward => (1,)
         *,
         device: torch.device = torch.device("cpu"),
@@ -24,12 +24,12 @@ class BaseReplayBuffer(ABC):
 
         :param capacity: Maximum number of transitions the buffer can hold.
         :param obs_shape: Shape of a single observation.
-        :param act_shape: Shape of a single action.
+        :param action_shape: Shape of a single action.
         :param reward_shape: Shape of a single reward (default: scalar (1,)).
-        :param obs_dtype: Data type for storing observations.
-        :param act_dtype: Data type for storing actions.
-        :param rew_dtype: Data type for storing rewards.
-        :param device: Device to store data on (CPU or GPU).
+        :param obs_dtype: Observations data type.
+        :param action_dtype: Actions data type.
+        :param reward_dtype: Rewards data type.
+        :param device: Device to store data.
         """
 
     @abstractmethod
@@ -44,13 +44,13 @@ class BaseReplayBuffer(ABC):
                            Shapes:
                              If Transition:
                                - obs: (*obs_shape,)
-                               - action: (*act_shape,)
+                               - action: (*action_shape,)
                                - reward: (*reward_shape)
                                - next_obs: (*obs_shape,)
                                - done: ()
                              If TransitionBatch:
                                - obs: (B, *obs_shape)
-                               - actions: (B, *act_shape)
+                               - actions: (B, *action_shape)
                                - rewards: (B, *reward_shape)
                                - next_obs: (B, *obs_shape)
                                - dones: (B,)
@@ -67,7 +67,7 @@ class BaseReplayBuffer(ABC):
         :return: A batch of transitions with tensors already stacked.
                  Shapes:
                    - obs: (B, *obs_shape)
-                   - actions: (B, *act_shape)
+                   - actions: (B, *action_shape)
                    - rewards: (B, *reward_shape)
                    - next_obs: (B, *obs_shape)
                    - dones: (B,)
@@ -84,7 +84,7 @@ class BaseReplayBuffer(ABC):
     @abstractmethod
     def clear(self) -> None:
         """
-        Reset the buffer (remove all stored transitions).
+        Reset buffer (remove all stored transitions).
         """
 
     @abstractmethod

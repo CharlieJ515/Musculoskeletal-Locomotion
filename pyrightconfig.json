@@ -1,6 +1,6 @@
 {
   "include": [
-    "src"
+    "."
   ],
   "exclude": [
     "**/__pycache__"
@@ -10,7 +10,8 @@
   "stubPath": "src/stubs",
   "reportMissingImports": "error",
   "reportMissingTypeStubs": false,
-  "pythonPath": "/home/kyusang/.conda/envs/osim_env/bin/python",
+  "venv": "osim_env",
+  "venvPath": "/home/kyusang/.conda/envs",
   "pythonVersion": "3.12",
   "pythonPlatform": "Linux",
   "executionEnvironments": [
