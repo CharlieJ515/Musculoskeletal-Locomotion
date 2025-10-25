@@ -44,8 +44,6 @@ class OsimModel:
         # indicator to prevent running other methods before reset
         self._was_reset = False
 
-        norm_spec = NormSpec.build(self.stepsize, self._model, self._state)
-        Observation.norm_spec = norm_spec
 
     @require_reset
     def actuate(self, action: Action):
@@ -72,6 +70,10 @@ class OsimModel:
         self._reset_pose(pose)
         self._model.equilibrateMuscles(self._state)
         self._reset_manager()
+
+        if Observation.norm_spec is None:
+            norm_spec = NormSpec.build(self.stepsize, self._model, self._state)
+            Observation.norm_spec = norm_spec
 
         self.step = 0
         self._was_reset = True
