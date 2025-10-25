@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, Iterable, Self, ClassVar
+from typing import Iterator, Tuple, Dict, ClassVar
 import math
 
 import numpy as np
@@ -38,11 +38,15 @@ class Action:
             if v < 0.0 or v > 1.0:
                 raise ValueError(f"Activation out of [0,1] for {k}: {v}")
 
-    def __iter__(self) -> Iterable[Tuple[str, float]]:
-        return self._activation.items()
+    def __iter__(self) -> Iterator[Tuple[str, float]]:
+        return iter(self._activation.items())
 
     def __getitem__(self, name: str) -> float:
-        return self._activation[name]
+        act = self._activation.get(name)
+        if act is None:
+            raise KeyError(f"Muscle activation '{name}' not found in Action.")
+
+        return act
 
     def to_numpy(self) -> NDArray[np.float32]:
         return np.asarray([self._activation[name] for name in self.muscle_order], dtype=np.float32)
@@ -51,7 +55,7 @@ class Action:
         return torch.as_tensor(self.to_numpy())
 
     @classmethod
-    def from_numpy(cls, arr: NDArray[np.float32]) -> Self:
+    def from_numpy(cls, arr: NDArray[np.float32]) -> "Action":
         expected_shape = (len(cls.muscle_order), )
         if arr.shape != expected_shape:
             raise ValueError(f"Expected array of length {expected_shape}, got {arr.shape[0]}")
