@@ -30,8 +30,8 @@ class OsimModel:
             name = muscle.getName()
 
             func = opensim.Constant(1.0)
-            self._brain.addActuator(muscle_set.get(i))
-            self._brain.prescribeControlForActuator(i, func)
+            self._brain.addActuator(muscle)
+            self._brain.prescribeControlForActuator(name, func)
             self._actuators[name] = func
         self._model.addController(self._brain)
 
