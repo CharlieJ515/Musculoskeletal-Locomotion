@@ -152,20 +152,24 @@ class BodyState:
         V_GB = body.getVelocityInGround(state)          # SpatialVec {omega; v}
         A_GB = body.getAccelerationInGround(state)
 
-        X_GA = ref.getTransformInGround(state)
-        V_GA = ref.getVelocityInGround(state)
-        A_GA = ref.getAccelerationInGround(state)
+        pos, ang = Vec3.from_Transform(X_GB)
+        vel, ang_vel = Vec3.from_SpatialVec(V_GB)
+        acc, ang_acc = Vec3.from_SpatialVec(A_GB)
 
-        # Pose of Body relative to 'frame' (A): X_AB
-        X_AB = ref.findTransformBetween(state, body)  # Body in frame
+        # X_GA = ref.getTransformInGround(state)
+        # V_GA = ref.getVelocityInGround(state)
+        # A_GA = ref.getAccelerationInGround(state)
 
-        # Relative spatial velocity/acceleration of Body in 'frame', expressed in 'frame'
-        V_AB = opensim.findRelativeVelocity(X_GA, V_GA, X_GB, V_GB)
-        A_AB = opensim.findRelativeAcceleration(X_GA, V_GA, A_GA, X_GB, V_GB, A_GB)
+        # # Pose of Body relative to 'frame' (A): X_AB
+        # X_AB = ref.findTransformBetween(state, body)  # Body in frame
 
-        pos, ang = Vec3.from_Transform(X_AB)
-        vel, ang_vel = Vec3.from_SpatialVec(V_AB)
-        acc, ang_acc = Vec3.from_SpatialVec(A_AB)
+        # # Relative spatial velocity/acceleration of Body in 'frame', expressed in 'frame'
+        # V_AB = opensim.findRelativeVelocity(X_GA, V_GA, X_GB, V_GB)
+        # A_AB = opensim.findRelativeAcceleration(X_GA, V_GA, A_GA, X_GB, V_GB, A_GB)
+
+        # pos, ang = Vec3.from_Transform(X_AB)
+        # vel, ang_vel = Vec3.from_SpatialVec(V_AB)
+        # acc, ang_acc = Vec3.from_SpatialVec(A_AB)
 
         return cls(
             pos=pos, vel=vel, acc=acc,
