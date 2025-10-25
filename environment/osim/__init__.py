@@ -1,7 +1,7 @@
 # revised version of L2M2019
 # https://github.com/stanfordnmbl/osim-rl/blob/master/osim/env/osim.py
 
-from .env import OsimEnv
+from .osim_env import OsimEnv
 from .osim_model import OsimModel
 from .pose import Pose
 from .action import Action
