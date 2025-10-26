@@ -7,7 +7,7 @@ import gymnasium as gym
 from .osim_model import OsimModel
 from .observation import Observation
 from .action import Action
-from .reward import Reward
+from .reward import CompositeReward
 from .pose import Pose
 
 
@@ -15,7 +15,7 @@ class OsimEnv(gym.Env):
     def __init__(
         self,
         model_path: Path,
-        reward_cls: Type[Reward],
+        reward: CompositeReward,
         pose: Pose,
         *,
         visualize: bool = True,
@@ -24,7 +24,7 @@ class OsimEnv(gym.Env):
         time_limit: int = 60,
     ):
         self.osim_model = OsimModel(model_path, visualize, integrator_accuracy, stepsize)
-        self.reward = reward_cls()
+        self.reward = reward
         self.pose = pose
         
         self.visualize = visualize
@@ -38,9 +38,13 @@ class OsimEnv(gym.Env):
 
     def reset(self, *, seed: int|None=None, options: Dict[str, Any]|None=None) -> Tuple[Observation, Dict[str, Any]]:
         self.osim_model.reset(self.pose)
-        self.reward.reset()
 
         obs = self.get_obs()
+        self.reward.reset(
+            self.osim_model.model,
+            self.osim_model.state,
+            obs
+        )
         info = {}
         return obs, info
 
@@ -49,12 +53,19 @@ class OsimEnv(gym.Env):
         self.osim_model.integrate()
 
         obs = self.get_obs()
-        reward = self.reward.compute()
+        reward, reward_dict = self.reward.compute(
+            self.osim_model.model,
+            self.osim_model.state,
+            obs,
+            action,
+        )
 
         terminated = False
         truncated, trunc_reason = self._get_truncated(obs)
 
-        info = {}
+        info: Dict[str, Any] = {
+            'rewards': reward_dict
+        }
         if trunc_reason is not None:
             info["truncated_reason"] = trunc_reason
             
