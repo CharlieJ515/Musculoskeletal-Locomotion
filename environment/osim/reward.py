@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, Tuple
 
 import opensim
 
@@ -184,7 +184,7 @@ class FootImpactPenalty(Reward):
 #         return -cost
 
 
-class CompositeReward(Reward):
+class CompositeReward:
     __slots__=['terms', 'weights']
     def __init__(self, terms: Dict[str, Reward], weights: Dict[str, float]):
         self.terms = terms
@@ -211,9 +211,12 @@ class CompositeReward(Reward):
         for t in self.terms.values():
             t.reset(model, state, obs)
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> Tuple[float, Dict[str, float]]:
         total = 0.0
+        rewards: Dict[str, float] = {}
         for name, term in self.terms.items():
             w = self.weights[name]
-            total += w * term.compute(model, state, obs, act)
-        return float(total)
+            reward = term.compute(model, state, obs, act)
+            total += w * reward
+            rewards[name] = reward
+        return float(total), rewards
