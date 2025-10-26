@@ -4,12 +4,13 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 import torch
+import opensim
 
 
 class Action:
     __slots__ = ("_activation",)
     muscle_order: ClassVar[Tuple[str, ...]]=()
-
+    muscle_index: ClassVar[Dict[str, int]]={}
     def __init__(self, activation: Dict[str, float], check_integrity: bool=True):
         self._activation = activation
 
@@ -49,6 +50,9 @@ class Action:
         return act
 
     def to_numpy(self) -> NDArray[np.float32]:
+        if not self.muscle_order:
+            raise RuntimeError
+
         return np.asarray([self._activation[name] for name in self.muscle_order], dtype=np.float32)
 
     def to_torch(self) -> torch.Tensor:
@@ -77,4 +81,21 @@ class Action:
 
         arr = tensor.detach().cpu().numpy()
         return cls.from_numpy(arr)
+
+    @classmethod
+    def from_opensim(cls, model: opensim.Model, state: opensim.State) -> "Action":
+        if not cls.muscle_index or not cls.muscle_order:
+            raise RuntimeError("muscle_index and muscle_order not initialized")
+
+        activation: Dict[str, float] = {}
+        muscleset = model.getMuscles()
+        for name in cls.muscle_order:
+            idx = cls.muscle_index[name]
+            muscle = muscleset.get(idx)
+            act = muscle.getActivation(state)
+            activation[name] = act
+
+        return Action(activation)
+
+
 
