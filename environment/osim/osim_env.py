@@ -84,3 +84,10 @@ class OsimEnv(gym.Env):
     def render(self):
         raise NotImplementedError("Render method is not supported for this environment.")
 
+    @property
+    def model(self) -> opensim.Model:
+        return self.osim_model.model
+    
+    @property
+    def state(self) -> opensim.State:
+        return self.osim_model.state
