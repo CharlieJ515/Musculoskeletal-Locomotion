@@ -4,6 +4,7 @@ from math import pi
 
 import opensim
 
+from .index import body_index
 from utils.opensim import Vec3
 
 Range = Tuple[float, float]
@@ -292,13 +293,6 @@ class Observation:
     target_velocity: Vec3
     normalized: bool=False
 
-    joint_index: ClassVar[Dict[str, int]] = {}
-    body_index: ClassVar[Dict[str, int]] = {}
-    muscle_index: ClassVar[Dict[str, int]] = {}
-    force_index: ClassVar[Dict[str, int]] = {}
-    force_label_index: ClassVar[Dict[Tuple[str, str], int]] = {}
-    marker_index: ClassVar[Dict[str, int]] = {}
-
     norm_spec: ClassVar[NormSpec | None] = None
 
     @classmethod
@@ -308,9 +302,6 @@ class Observation:
         state: opensim.State,
         target_velocity: Vec3,
     ) -> "Observation":
-        if not cls.joint_index:
-            cls._init_indices(model)
-
         # joint
         joint_set = model.getJointSet()
         joint: Dict[str, JointState] = {}
@@ -321,7 +312,7 @@ class Observation:
 
         # body
         body_set = model.getBodySet()
-        pelvis_idx = cls.body_index['pelvis']
+        pelvis_idx = body_index('pelvis')
         pelvis = body_set.get(pelvis_idx)
         body: Dict[str, BodyState] = {}
         for i in range(body_set.getSize()):
@@ -387,30 +378,6 @@ class Observation:
             normalized=True,
             target_velocity=target_velocity,
         )
-
-    @classmethod
-    def _init_indices(
-        cls,
-        model: opensim.Model,
-    ) -> None:
-        joint_set = model.getJointSet()
-        body_set = model.getBodySet()
-        muscle_set = model.getMuscles()
-        force_set = model.getForceSet()
-        marker_set = model.getMarkerSet()
-
-        cls.joint_index = {joint_set.get(i).getName(): i for i in range(joint_set.getSize())}
-        cls.body_index = {body_set.get(i).getName(): i for i in range(body_set.getSize())}
-        cls.muscle_index = {muscle_set.get(i).getName(): i for i in range(muscle_set.getSize())}
-        cls.force_index = {force_set.get(i).getName(): i for i in range(force_set.getSize())}
-        cls.marker_index = {marker_set.get(i).getName(): i for i in range(marker_set.getSize())}
-
-        for i in range(force_set.getSize()):
-            f = force_set.get(i)
-            name = f.getName()
-            labels = f.getRecordLabels()
-            for j in range(labels.getSize()):
-                cls.force_label_index[(name, labels.get(j))] = j
 
     def normalize(self) -> "Observation":
         if self.norm_spec is None:

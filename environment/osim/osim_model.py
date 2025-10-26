@@ -4,9 +4,12 @@ import warnings
 
 import opensim
 
+from utils.opensim import Vec3
+
 from .pose import Pose
 from .action import Action
 from .observation import Observation, NormSpec
+from .index import build_index_bundle
 from utils import require_reset
 
 class RangeError(ValueError): ...
@@ -18,6 +21,8 @@ class OsimModel:
         self.model_path = model_path
         self._model = opensim.Model(str(self.model_path))
         self._model.buildSystem()
+
+        build_index_bundle(self._model)
 
         # Add actuators as constant functions. Then, during simulations
         # we will change levels of constants.
@@ -54,7 +59,8 @@ class OsimModel:
     @require_reset
     def get_obs(self):
         self.model.realizeAcceleration(self._state)
-        return Observation.from_opensim(self._model, self._state)
+        target_vec = Vec3(0, 0, 0)
+        return Observation.build(self._model, self._state, target_vec)
 
     @property
     def state(self) -> opensim.State:

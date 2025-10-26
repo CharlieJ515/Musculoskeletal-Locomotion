@@ -6,11 +6,12 @@ from numpy.typing import NDArray
 import torch
 import opensim
 
+from .index import muscle_index
+
 
 class Action:
     __slots__ = ("_activation",)
     muscle_order: ClassVar[Tuple[str, ...]]=()
-    muscle_index: ClassVar[Dict[str, int]]={}
     def __init__(self, activation: Dict[str, float], check_integrity: bool=True):
         self._activation = activation
 
@@ -84,13 +85,13 @@ class Action:
 
     @classmethod
     def from_opensim(cls, model: opensim.Model, state: opensim.State) -> "Action":
-        if not cls.muscle_index or not cls.muscle_order:
-            raise RuntimeError("muscle_index and muscle_order not initialized")
+        if not cls.muscle_order:
+            raise RuntimeError("Action.muscle_order not initialized. Set Action.muscle_order before calling this method")
 
         activation: Dict[str, float] = {}
         muscleset = model.getMuscles()
         for name in cls.muscle_order:
-            idx = cls.muscle_index[name]
+            idx = muscle_index(name)
             muscle = muscleset.get(idx)
             act = muscle.getActivation(state)
             activation[name] = act
