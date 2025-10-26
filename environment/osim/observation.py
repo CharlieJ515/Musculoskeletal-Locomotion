@@ -289,6 +289,7 @@ class Observation:
     force: Dict[str, Dict[str, float]]
     marker: Dict[str, PointState]
     mass_center: PointState
+    target_velocity: Vec3
     normalized: bool=False
 
     joint_index: ClassVar[Dict[str, int]] = {}
@@ -301,10 +302,11 @@ class Observation:
     norm_spec: ClassVar[NormSpec | None] = None
 
     @classmethod
-    def from_opensim(
+    def build(
         cls,
         model: opensim.Model,
         state: opensim.State,
+        target_velocity: Vec3,
     ) -> "Observation":
         if not cls.joint_index:
             cls._init_indices(model)
@@ -374,7 +376,17 @@ class Observation:
         acc = Vec3.from_Vec3(model.calcMassCenterAcceleration(state))
         mass_center = PointState(pos=pos, vel=vel, acc=acc)
 
-        return cls(joint=joint, body=body, muscle=muscle, foot=foot, force=force, marker=marker, mass_center=mass_center)
+        return Observation(
+            joint=joint,
+            body=body,
+            muscle=muscle,
+            foot=foot,
+            force=force,
+            marker=marker,
+            mass_center=mass_center,
+            normalized=True,
+            target_velocity=target_velocity,
+        )
 
     @classmethod
     def _init_indices(
@@ -450,7 +462,7 @@ class Observation:
             force=force,
             marker=marker,
             mass_center=mass_center,
-            normalized=True,
+            target_velocity=self.target_velocity,
         )
 
     def to_L2M(self) -> Dict[str, Any]:
