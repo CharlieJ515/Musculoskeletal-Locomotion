@@ -12,6 +12,7 @@ class IndexBundle:
     force: Dict[str, int]
     marker: Dict[str, int]
     force_label: Dict[Tuple[str, str], int]
+    probe: Dict[str, int]
 
 _index_bundle: Optional[IndexBundle] = None
 
@@ -23,12 +24,14 @@ def build_index_bundle(model: opensim.Model) -> IndexBundle:
     muscle_set = model.getMuscles()
     force_set  = model.getForceSet()
     marker_set = model.getMarkerSet()
+    probe_set  = model.getProbeSet()
 
     joint_index  = {joint_set.get(i).getName():  i for i in range(joint_set.getSize())}
     body_index   = {body_set.get(i).getName():   i for i in range(body_set.getSize())}
     muscle_index = {muscle_set.get(i).getName(): i for i in range(muscle_set.getSize())}
     force_index  = {force_set.get(i).getName():  i for i in range(force_set.getSize())}
     marker_index = {marker_set.get(i).getName(): i for i in range(marker_set.getSize())}
+    probe_index  = {probe_set.get(i).getName():  i for i in range(probe_set.getSize())}
 
     force_label_index: Dict[Tuple[str, str], int] = {}
     for i in range(force_set.getSize()):
@@ -45,9 +48,10 @@ def build_index_bundle(model: opensim.Model) -> IndexBundle:
         force=force_index,
         marker=marker_index,
         force_label=force_label_index,
+        probe=probe_index,
     )
-    _index_bundle = index_bundle
 
+    _index_bundle = index_bundle
     return index_bundle
 
 def get_index_bundle() -> IndexBundle:
@@ -75,6 +79,10 @@ def force_index(name: str) -> int:
 def marker_index(name: str) -> int:
     try: return get_index_bundle().marker[name]
     except KeyError: raise KeyError(f"Unknown marker '{name}'")
+
+def probe_index(name: str) -> int:
+    try: return get_index_bundle().probe[name]
+    except KeyError: raise KeyError(f"Unknown probe '{name}'")
 
 def force_label_index(force_name: str, label: str) -> int:
     try: return get_index_bundle().force_label[(force_name, label)]
