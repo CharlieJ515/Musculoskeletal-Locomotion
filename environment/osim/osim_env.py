@@ -38,7 +38,7 @@ class OsimEnv(gym.Env[Observation, Action]):
 
         self.total_step = 0
 
-    def get_obs(self) -> Observation:
+    def _get_obs(self) -> Observation:
         return self.osim_model.get_obs()
 
     def reset(
@@ -51,7 +51,7 @@ class OsimEnv(gym.Env[Observation, Action]):
 
         self.osim_model.reset(self.pose)
 
-        obs = self.get_obs()
+        obs = self._get_obs()
         self.reward.reset(self.osim_model.model, self.osim_model.state, obs)
         info = {}
         return obs, info
@@ -62,7 +62,7 @@ class OsimEnv(gym.Env[Observation, Action]):
         self.osim_model.actuate(action)
         self.osim_model.integrate()
 
-        obs = self.get_obs()
+        obs = self._get_obs()
         reward, reward_dict = self.reward.compute(
             self.osim_model.model,
             self.osim_model.state,
