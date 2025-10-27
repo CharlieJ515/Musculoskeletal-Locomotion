@@ -5,9 +5,10 @@ from math import pi
 import opensim
 
 from .index import body_index
-from utils.opensim import Vec3
+from utils.vec3 import Vec3
 
 Range = Tuple[float, float]
+
 
 @dataclass(frozen=True, slots=True)
 class NormSpec:
@@ -76,9 +77,9 @@ class NormSpec:
 @dataclass(frozen=True, slots=True)
 class JointState:
     dof: int
-    ang: Tuple[float, ...] # angle
-    ang_vel: Tuple[float, ...] # angular velocity
-    ang_acc: Tuple[float, ...] # angular acceleration
+    ang: Tuple[float, ...]  # angle
+    ang_vel: Tuple[float, ...]  # angular velocity
+    ang_acc: Tuple[float, ...]  # angular acceleration
 
     def __post_init__(self):
         # check attributes have length of self.dof
@@ -87,9 +88,7 @@ class JointState:
             if len(val) == self.dof:
                 continue
 
-            raise ValueError(
-                f"{name} length {len(val)} does not match dof={self.dof}"
-            )
+            raise ValueError(f"{name} length {len(val)} does not match dof={self.dof}")
 
     def norm(self, rngs: Tuple[Range, ...], T: float) -> "JointState":
         if len(rngs) != self.dof:
@@ -101,56 +100,64 @@ class JointState:
         for i in range(self.dof):
             lo, hi = rngs[i]
             half = 0.5 * (hi - lo)
-            mid  = 0.5 * (hi + lo)
+            mid = 0.5 * (hi + lo)
 
             ang.append((self.ang[i] - mid) / half)
             ang_vel.append(self.ang_vel[i] / (half / T))
             ang_acc.append(self.ang_acc[i] / (half / (T * T)))
 
-        return JointState(dof=self.dof, ang=tuple(ang), ang_vel=tuple(ang_vel), ang_acc=tuple(ang_acc))
+        return JointState(
+            dof=self.dof, ang=tuple(ang), ang_vel=tuple(ang_vel), ang_acc=tuple(ang_acc)
+        )
 
     @classmethod
     def from_Joint(cls, joint: opensim.Joint, state: opensim.State) -> "JointState":
         dof = joint.numCoordinates()
         ang = tuple(joint.get_coordinates(k).getValue(state) for k in range(dof))
-        ang_vel = tuple(joint.get_coordinates(k).getSpeedValue(state) for k in range(dof))
-        ang_acc = tuple(joint.get_coordinates(k).getAccelerationValue(state) for k in range(dof))
+        ang_vel = tuple(
+            joint.get_coordinates(k).getSpeedValue(state) for k in range(dof)
+        )
+        ang_acc = tuple(
+            joint.get_coordinates(k).getAccelerationValue(state) for k in range(dof)
+        )
 
         return JointState(
-            dof = dof,
-            ang = ang,
-            ang_vel = ang_vel,
-            ang_acc = ang_acc,
+            dof=dof,
+            ang=ang,
+            ang_vel=ang_vel,
+            ang_acc=ang_acc,
         )
+
 
 @dataclass(frozen=True, slots=True)
 class BodyState:
-    pos: Vec3 # position
-    vel: Vec3 # velocity
-    acc: Vec3 # acceleration
-    ang: Vec3 # angle
-    ang_vel: Vec3 # angular velocity
-    ang_acc: Vec3 # angular acceleration
+    pos: Vec3  # position
+    vel: Vec3  # velocity
+    acc: Vec3  # acceleration
+    ang: Vec3  # angle
+    ang_vel: Vec3  # angular velocity
+    ang_acc: Vec3  # angular acceleration
 
     reference: opensim.Frame
 
     def norm(self, ref: "BodyState", L: float, T: float) -> "BodyState":
         return BodyState(
             pos=(self.pos - ref.pos) / L,
-            vel=(self.vel - ref.vel) / (L/T),
-            acc=(self.acc - ref.acc) / (L/(T*T)),
+            vel=(self.vel - ref.vel) / (L / T),
+            acc=(self.acc - ref.acc) / (L / (T * T)),
             ang=self.ang / pi,
             ang_vel=self.ang_vel * T,
-            ang_acc=self.ang_acc * (T*T),
-
+            ang_acc=self.ang_acc * (T * T),
             reference=self.reference,
         )
 
     @classmethod
-    def from_Body(cls, body: opensim.Body, ref: opensim.Frame, state: opensim.State) -> "BodyState":
+    def from_Body(
+        cls, body: opensim.Body, ref: opensim.Frame, state: opensim.State
+    ) -> "BodyState":
         # Ground-expressed poses/vels/accs
         X_GB = body.getTransformInGround(state)
-        V_GB = body.getVelocityInGround(state)          # SpatialVec {omega; v}
+        V_GB = body.getVelocityInGround(state)  # SpatialVec {omega; v}
         A_GB = body.getAccelerationInGround(state)
 
         pos, ang = Vec3.from_Transform(X_GB)
@@ -173,10 +180,15 @@ class BodyState:
         # acc, ang_acc = Vec3.from_SpatialVec(A_AB)
 
         return cls(
-            pos=pos, vel=vel, acc=acc,
-            ang=ang, ang_vel=ang_vel, ang_acc=ang_acc,
+            pos=pos,
+            vel=vel,
+            acc=acc,
+            ang=ang,
+            ang_vel=ang_vel,
+            ang_acc=ang_acc,
             reference=ref,
         )
+
 
 @dataclass(frozen=True, slots=True)
 class PointState:
@@ -187,8 +199,8 @@ class PointState:
     def norm(self, ref: "BodyState|PointState", L: float, T: float) -> "PointState":
         return PointState(
             pos=(self.pos - ref.pos) / L,
-            vel=(self.vel - ref.vel) / (L/T),
-            acc=(self.acc - ref.acc) / (L/(T*T)),
+            vel=(self.vel - ref.vel) / (L / T),
+            acc=(self.acc - ref.acc) / (L / (T * T)),
         )
 
     @classmethod
@@ -198,6 +210,7 @@ class PointState:
         acc = Vec3.from_Vec3(marker.getAccelerationInGround(state))
 
         return PointState(pos=pos, vel=vel, acc=acc)
+
 
 @dataclass(frozen=True, slots=True)
 class MuscleState:
@@ -217,11 +230,12 @@ class MuscleState:
     @classmethod
     def from_Muscle(cls, muscle: opensim.Muscle, state: opensim.State) -> "MuscleState":
         return MuscleState(
-            activation = muscle.getActivation(state),
-            fiber_length = muscle.getFiberLength(state),
-            fiber_velocity = muscle.getFiberVelocity(state),
-            fiber_force = muscle.getFiberForce(state),
+            activation=muscle.getActivation(state),
+            fiber_length=muscle.getFiberLength(state),
+            fiber_velocity=muscle.getFiberVelocity(state),
+            fiber_force=muscle.getFiberForce(state),
         )
+
 
 @dataclass(frozen=True, slots=True)
 class ComponentState:
@@ -233,6 +247,7 @@ class ComponentState:
             force=self.force / mg,
             torque=self.torque / (mg * L),
         )
+
 
 @dataclass(frozen=True, slots=True)
 class FootState:
@@ -265,10 +280,12 @@ class FootState:
                 float(data.get(f"{base}.Y", 0.0)),
                 float(data.get(f"{base}.Z", 0.0)),
             )
+
         def partner_key(p: str) -> str:
             return p if p == "ground" else f"{p}{suffix}"
+
         def read_component(partner: str) -> ComponentState:
-            base_force  = f"{name}.{partner_key(partner)}.force"
+            base_force = f"{name}.{partner_key(partner)}.force"
             base_torque = f"{name}.{partner_key(partner)}.torque"
             force = _get_triplet(data, base_force)
             torque = _get_triplet(data, base_torque)
@@ -291,7 +308,7 @@ class Observation:
     marker: Dict[str, PointState]
     mass_center: PointState
     target_velocity: Vec3
-    normalized: bool=False
+    normalized: bool = False
 
     norm_spec: ClassVar[NormSpec | None] = None
 
@@ -312,7 +329,7 @@ class Observation:
 
         # body
         body_set = model.getBodySet()
-        pelvis_idx = body_index('pelvis')
+        pelvis_idx = body_index("pelvis")
         pelvis = body_set.get(pelvis_idx)
         body: Dict[str, BodyState] = {}
         for i in range(body_set.getSize()):
@@ -381,14 +398,16 @@ class Observation:
 
     def normalize(self) -> "Observation":
         if self.norm_spec is None:
-            raise RuntimeError("Observation.norm_spec is not set. Call NormSpec.build(...) before normalize().")
+            raise RuntimeError(
+                "Observation.norm_spec is not set. Call NormSpec.build(...) before normalize()."
+            )
 
         L = self.norm_spec.L
         T = self.norm_spec.T
         mg = self.norm_spec.g * self.norm_spec.mass
 
         ref = self.body.get("pelvis")
-        if ref is None: 
+        if ref is None:
             raise RuntimeError("pelvis body not found in Observation.body.")
 
         joint: Dict[str, JointState] = {}
@@ -408,7 +427,7 @@ class Observation:
             if rng is None:
                 raise RuntimeError(f"missing muscle range for '{name}' in norm_spec.")
             muscle[name] = m.norm(rng)
-    
+
         foot: Dict[str, FootState] = {}
         for name, f in self.foot.items():
             foot[name] = f.norm(mg, L)
@@ -418,7 +437,7 @@ class Observation:
         marker: Dict[str, PointState] = {}
         for name, m in self.marker.items():
             marker[name] = m.norm(ref, L, T)
-            
+
         mass_center: PointState = self.mass_center.norm(ref, L, T)
 
         return Observation(
@@ -463,7 +482,7 @@ class Observation:
                 ground.force.z,
             ]
 
-            leg['joint'] = {
+            leg["joint"] = {
                 "hip_abd": self.joint[f"hip_{side}"].ang[1],
                 "hip": self.joint[f"hip_{side}"].ang[0],
                 "knee": self.joint[f"knee_{side}"].ang[0],
@@ -476,19 +495,19 @@ class Observation:
                 "ankle": self.joint[f"ankle_{side}"].ang_vel[0],
             }
 
-            muscle = {name: m.norm(self.norm_spec.muscle_ranges[name]) for (name, m) in self.muscle.items()} # type: ignore[reportOptionalMemberAccess]
+            muscle = {name: m.norm(self.norm_spec.muscle_ranges[name]) for (name, m) in self.muscle.items()}  # type: ignore[reportOptionalMemberAccess]
             muscle_name_map = {
-                'abd': 'HAB',
-                'add': 'HAD',
-                'iliopsoas': 'HFL',
-                'glut_max': 'GLU',
-                'hamstrings': 'HAM',
-                'rect_fem': 'RF',
-                'vasti': 'VAS',
-                'bifemsh': 'BFSH',
-                'gastroc': 'GAS',
-                'soleus': 'SOL',
-                'tib_ant': 'TA',
+                "abd": "HAB",
+                "add": "HAD",
+                "iliopsoas": "HFL",
+                "glut_max": "GLU",
+                "hamstrings": "HAM",
+                "rect_fem": "RF",
+                "vasti": "VAS",
+                "bifemsh": "BFSH",
+                "gastroc": "GAS",
+                "soleus": "SOL",
+                "tib_ant": "TA",
             }
             for name, m in muscle.items():
                 key = muscle_name_map[name]
@@ -499,6 +518,5 @@ class Observation:
                 }
 
             obs_dict[f"{side}_leg"] = leg
-
 
         return obs_dict

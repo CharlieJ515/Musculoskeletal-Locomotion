@@ -4,7 +4,7 @@ import warnings
 
 import opensim
 
-from utils.opensim import Vec3
+from utils.vec3 import Vec3
 
 from .pose import Pose
 from .action import Action
@@ -12,10 +12,18 @@ from .observation import Observation, NormSpec
 from .index import build_index_bundle
 from utils import require_reset
 
+
 class RangeError(ValueError): ...
 
+
 class OsimModel:
-    def __init__(self, model_path: Path, visualize: bool, integrator_accuracy: float, stepsize: float):
+    def __init__(
+        self,
+        model_path: Path,
+        visualize: bool,
+        integrator_accuracy: float,
+        stepsize: float,
+    ):
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {model_path}")
         self.model_path = model_path
@@ -48,7 +56,6 @@ class OsimModel:
         self.stepsize = stepsize
         # indicator to prevent running other methods before reset
         self._was_reset = False
-
 
     @require_reset
     def actuate(self, action: Action):
@@ -108,7 +115,9 @@ class OsimModel:
             if q is not None:
                 lo, hi = coord.getRangeMin(), coord.getRangeMax()
                 if not (lo <= q <= hi):
-                    raise RangeError(f"Coordinate '{name}' out of range: {q:.4f} not in [{lo:.4f}, {hi:.4f}].")
+                    raise RangeError(
+                        f"Coordinate '{name}' out of range: {q:.4f} not in [{lo:.4f}, {hi:.4f}]."
+                    )
                 coord.setValue(self._state, q)
 
             if u is not None:
@@ -131,26 +140,25 @@ class OsimModel:
         print("JOINTS")
         jointSet = self._model.getJointSet()
         for i in range(jointSet.getSize()):
-            print(i,jointSet.get(i).getName())
+            print(i, jointSet.get(i).getName())
 
         print("\nBODIES")
         bodySet = self._model.getBodySet()
         for i in range(bodySet.getSize()):
-            print(i,bodySet.get(i).getName())
+            print(i, bodySet.get(i).getName())
 
         print("\nMUSCLES")
         muscleSet = self._model.getMuscles()
         for i in range(muscleSet.getSize()):
-            muscle = muscleSet.get(i) 
-            print(i,muscle.getName(),muscle.getMaxIsometricForce())
+            muscle = muscleSet.get(i)
+            print(i, muscle.getName(), muscle.getMaxIsometricForce())
 
         print("\nFORCES")
         forceSet = self._model.getForceSet()
         for i in range(forceSet.getSize()):
-            print(i,forceSet.get(i).getName())
+            print(i, forceSet.get(i).getName())
 
         print("\nMARKERS")
         markerSet = self._model.getMarkerSet()
         for i in range(markerSet.getSize()):
-            print(i,markerSet.get(i).getName())
-
+            print(i, markerSet.get(i).getName())
