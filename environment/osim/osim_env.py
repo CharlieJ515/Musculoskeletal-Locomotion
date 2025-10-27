@@ -47,6 +47,8 @@ class OsimEnv(gym.Env[Observation, Action]):
         seed: int | None = None,
         options: Dict[str, Any] | None = None,
     ) -> Tuple[Observation, Dict[str, Any]]:
+        super().reset(seed=seed)
+
         self.osim_model.reset(self.pose)
 
         obs = self.get_obs()
