@@ -1,12 +1,9 @@
-from __future__ import annotations
-
 from typing import TypeVar, Any, Tuple, SupportsFloat
 import dataclasses
 import math
 import warnings
 
 import gymnasium as gym
-from gymnasium.utils import seeding
 
 from environment.osim import Observation
 from utils.vec3 import Vec3
