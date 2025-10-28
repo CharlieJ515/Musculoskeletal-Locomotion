@@ -16,12 +16,12 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         env: gym.Env[Observation, ActType],
         *,
         speed_range: Tuple[float, float] = (1.2, 1.8),
-        speed_tol: float = 0.10,
+        speed_tolerance: float = 0.10,
         hold_steps: int = 150,
     ):
         super().__init__(env)
         self.speed_range = speed_range
-        self.speed_tol = speed_tol
+        self.speed_tolerance = speed_tolerance
         self.hold_steps = hold_steps
 
     def reset(
@@ -65,7 +65,7 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         err = pelvis_speed - self.target_speed
         reward = -(err**2)
 
-        if abs(err) <= self.speed_tol:
+        if abs(err) <= self.speed_tolerance:
             self.hold_counter = self.hold_counter + 1
             terminated = self.hold_counter >= self.hold_steps or terminated
             info["success"] = terminated
