@@ -1,7 +1,9 @@
 from dataclasses import dataclass
-from typing import Tuple, Self
+from typing import Tuple
+import math
 
 import opensim
+
 
 @dataclass(frozen=True, slots=True)
 class Vec3:
@@ -21,8 +23,14 @@ class Vec3:
     def __truediv__(self, s: float) -> "Vec3":
         return Vec3(self.x / s, self.y / s, self.z / s)
 
-    def norm(self) -> float:
+    def magnitude(self) -> float:
         return (self.x**2 + self.y**2 + self.z**2) ** 0.5
+
+    def norm(self) -> "Vec3":
+        magnitude = self.magnitude()
+        if magnitude == 0:
+            return Vec3(0.0, 0.0, 0.0)
+        return self / magnitude
 
     def to_tuple(self) -> tuple[float, float, float]:
         return (self.x, self.y, self.z)
