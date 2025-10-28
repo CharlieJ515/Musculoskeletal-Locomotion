@@ -31,7 +31,10 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         options: dict[str, Any] | None = None,
     ) -> tuple[Observation, dict[str, Any]]:
         obs, info = self.env.reset(seed=seed, options=options)
-        # TODO - raise RuntimeError if obs is normalized, warn to use normlization wrapper at last
+        if obs.normalized:
+            raise RuntimeError(
+                "Received normalized observation, run normalization at last"
+            )
 
         self.hold_counter: int = 0
         self.target_speed: float = self.np_random.uniform(*self.speed_range)
@@ -51,6 +54,10 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         self, action: ActType
     ) -> tuple[Observation, SupportsFloat, bool, bool, dict[str, Any]]:
         obs, reward, terminated, truncated, info = self.env.step(action)
+        if obs.normalized:
+            raise RuntimeError(
+                "Received normalized observation, run normalization at last"
+            )
 
         pelvis = obs.body["pelvis"]
         pelvis_vel = pelvis.vel
