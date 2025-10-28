@@ -1,5 +1,6 @@
 from typing import TypeVar, Any, SupportsFloat, Tuple
 import dataclasses
+import math
 
 import gymnasium as gym
 
@@ -56,7 +57,7 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
 
         pelvis = obs.body["pelvis"]
         pelvis_vel = pelvis.vel
-        pelvis_speed = (pelvis_vel.x**2 + pelvis_vel.z**2) ** 0.5
+        pelvis_speed = math.hypot(pelvis_vel.x, pelvis_vel.z)
         err = pelvis_speed - self.target_speed
         reward = -(err**2)
 
