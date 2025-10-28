@@ -15,7 +15,7 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         env: gym.Env[Observation, ActType],
         *,
         speed_range: Tuple[float, float] = (1.2, 1.8),
-        speed_tolerance: float = 0.10,
+        speed_tolerance: float = 0.10,  # target speed tolerance
         hold_steps: int = 150,
     ):
         super().__init__(env)
@@ -53,10 +53,6 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         self, action: ActType
     ) -> tuple[Observation, SupportsFloat, bool, bool, dict[str, Any]]:
         obs, reward, terminated, truncated, info = self.env.step(action)
-        if obs.normalized:
-            raise RuntimeError(
-                "Received normalized observation, run normalization at last"
-            )
 
         pelvis = obs.body["pelvis"]
         pelvis_vel = pelvis.vel
