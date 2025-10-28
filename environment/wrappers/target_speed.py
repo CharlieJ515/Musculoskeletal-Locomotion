@@ -6,7 +6,6 @@ import gymnasium as gym
 from environment.osim import Observation
 from utils.vec3 import Vec3
 
-ObsType = TypeVar("ObsType")
 ActType = TypeVar("ActType")
 
 
