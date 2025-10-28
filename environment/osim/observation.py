@@ -81,6 +81,8 @@ class JointState:
     ang_vel: Tuple[float, ...]  # angular velocity
     ang_acc: Tuple[float, ...]  # angular acceleration
 
+    normalized: bool = False
+
     def __post_init__(self):
         # check attributes have length of self.dof
         for name in ("ang", "ang_vel", "ang_acc"):
@@ -107,7 +109,11 @@ class JointState:
             ang_acc.append(self.ang_acc[i] / (half / (T * T)))
 
         return JointState(
-            dof=self.dof, ang=tuple(ang), ang_vel=tuple(ang_vel), ang_acc=tuple(ang_acc)
+            dof=self.dof,
+            ang=tuple(ang),
+            ang_vel=tuple(ang_vel),
+            ang_acc=tuple(ang_acc),
+            normalized=True,
         )
 
     @classmethod
@@ -139,6 +145,7 @@ class BodyState:
     ang_acc: Vec3  # angular acceleration
 
     reference: opensim.Frame
+    normalized: bool = False
 
     def norm(self, ref: "BodyState", L: float, T: float) -> "BodyState":
         return BodyState(
@@ -149,6 +156,7 @@ class BodyState:
             ang_vel=self.ang_vel * T,
             ang_acc=self.ang_acc * (T * T),
             reference=self.reference,
+            normalized=True,
         )
 
     @classmethod
@@ -196,11 +204,14 @@ class PointState:
     vel: Vec3
     acc: Vec3
 
+    normalized: bool = False
+
     def norm(self, ref: "BodyState|PointState", L: float, T: float) -> "PointState":
         return PointState(
             pos=(self.pos - ref.pos) / L,
             vel=(self.vel - ref.vel) / (L / T),
             acc=(self.acc - ref.acc) / (L / (T * T)),
+            normalized=True,
         )
 
     @classmethod
@@ -219,12 +230,15 @@ class MuscleState:
     fiber_velocity: float
     fiber_force: float
 
+    normalized: bool = False
+
     def norm(self, muscle_range: Dict[str, float]) -> "MuscleState":
         return MuscleState(
             activation=self.activation,
             fiber_length=self.fiber_length / muscle_range["fiber_length"],
             fiber_velocity=self.fiber_velocity / muscle_range["fiber_velocity"],
             fiber_force=self.fiber_force / muscle_range["fiber_force"],
+            normalized=True,
         )
 
     @classmethod
@@ -242,10 +256,13 @@ class ComponentState:
     force: Vec3
     torque: Vec3
 
+    normalized: bool = False
+
     def norm(self, mg: float, L: float) -> "ComponentState":
         return ComponentState(
             force=self.force / mg,
             torque=self.torque / (mg * L),
+            normalized=True,
         )
 
 
@@ -255,11 +272,14 @@ class FootState:
     calcn: ComponentState
     toes: ComponentState
 
+    normalized: bool = False
+
     def norm(self, mg: float, L: float) -> "FootState":
         return FootState(
             ground=self.ground.norm(mg, L),
             calcn=self.calcn.norm(mg, L),
             toes=self.toes.norm(mg, L),
+            normalized=True,
         )
 
     @classmethod
@@ -308,6 +328,7 @@ class Observation:
     marker: Dict[str, PointState]
     mass_center: PointState
     target_velocity: Vec3
+
     normalized: bool = False
 
     norm_spec: ClassVar[NormSpec | None] = None
@@ -392,11 +413,10 @@ class Observation:
             force=force,
             marker=marker,
             mass_center=mass_center,
-            normalized=True,
             target_velocity=target_velocity,
         )
 
-    def normalize(self) -> "Observation":
+    def norm(self) -> "Observation":
         if self.norm_spec is None:
             raise RuntimeError(
                 "Observation.norm_spec is not set. Call NormSpec.build(...) before normalize()."
@@ -448,6 +468,7 @@ class Observation:
             force=force,
             marker=marker,
             mass_center=mass_center,
+            normalized=True,
             target_velocity=self.target_velocity,
         )
 
