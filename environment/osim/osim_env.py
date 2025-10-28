@@ -15,7 +15,7 @@ class OsimEnv(gym.Env[Observation, Action]):
     def __init__(
         self,
         model_path: Path,
-        pose: Pose,
+        init_pose: Pose,
         *,
         visualize: bool = True,
         integrator_accuracy: float = 5e-5,
@@ -28,7 +28,7 @@ class OsimEnv(gym.Env[Observation, Action]):
             integrator_accuracy,
             stepsize,
         )
-        self.pose = pose
+        self.init_pose = init_pose
 
         self.visualize = visualize
         self.integrator_accuracy = integrator_accuracy
@@ -47,7 +47,7 @@ class OsimEnv(gym.Env[Observation, Action]):
     ) -> Tuple[Observation, Dict[str, Any]]:
         super().reset(seed=seed)
 
-        self.osim_model.reset(self.pose)
+        self.osim_model.reset(self.init_pose)
 
         obs = self._get_obs()
         info = {}
