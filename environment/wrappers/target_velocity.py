@@ -53,6 +53,7 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
         self.target_z = round(self.np_random.uniform(*self.box_z), 1)
 
     def _get_target(self, x: float, z: float, yaw: float) -> tuple[Vec3, float, float]:
+        # TODO - modify this method to use Vec3 operations
         dx = self.target_x - x
         dz = self.target_z - z
         dist = math.hypot(dx, dz)
