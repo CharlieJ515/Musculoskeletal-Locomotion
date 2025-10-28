@@ -15,7 +15,6 @@ class OsimEnv(gym.Env[Observation, Action]):
     def __init__(
         self,
         model_path: Path,
-        reward: CompositeReward,
         pose: Pose,
         *,
         visualize: bool = True,
@@ -29,7 +28,6 @@ class OsimEnv(gym.Env[Observation, Action]):
             integrator_accuracy,
             stepsize,
         )
-        self.reward = reward
         self.pose = pose
 
         self.visualize = visualize
@@ -52,7 +50,6 @@ class OsimEnv(gym.Env[Observation, Action]):
         self.osim_model.reset(self.pose)
 
         obs = self._get_obs()
-        self.reward.reset(self.osim_model.model, self.osim_model.state, obs)
         info = {}
         return obs, info
 
@@ -63,17 +60,11 @@ class OsimEnv(gym.Env[Observation, Action]):
         self.osim_model.integrate()
 
         obs = self._get_obs()
-        reward, reward_dict = self.reward.compute(
-            self.osim_model.model,
-            self.osim_model.state,
-            obs,
-            action,
-        )
-
+        reward = 0
         terminated = False
         truncated, trunc_reason = self._get_truncated(obs)
 
-        info: Dict[str, Any] = {"rewards": reward_dict}
+        info: Dict[str, Any] = {}
         if trunc_reason is not None:
             info["truncated_reason"] = trunc_reason
 
