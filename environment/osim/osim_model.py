@@ -29,23 +29,9 @@ class OsimModel:
         self.model_path = model_path
         self._model = opensim.Model(str(self.model_path))
         self._model.buildSystem()
-
         build_index_bundle(self._model)
 
-        # Add actuators as constant functions. Then, during simulations
-        # we will change levels of constants.
-        # One actuartor per each muscle
-        self._brain = opensim.PrescribedController()
-        self._actuators: Dict[str, opensim.Constant] = {}
-        muscle_set = self._model.getMuscles()
-        for i in range(muscle_set.getSize()):
-            muscle = muscle_set.get(i)
-            name = muscle.getName()
-
-            func = opensim.Constant(1.0)
-            self._brain.addActuator(muscle)
-            self._brain.prescribeControlForActuator(name, func)
-            self._actuators[name] = func
+        self._build_brain()
         self._model.addController(self._brain)
 
         # Enable the visualizer
@@ -59,15 +45,39 @@ class OsimModel:
 
     @require_reset
     def actuate(self, action: Action):
+        # storing constant function (actuator) in python dictionary fails to work properly
+        # it seems control function can change as model progresses
+        # thereby instead of storing function in python, access them by index at each actuation
+        function_set: opensim.FunctionSet = self._brain.get_ControlFunctions()
         for name, activation in action:
-            actuator = self._actuators[name]
-            actuator.setValue(activation)
+            idx = self._actuator_idx[name]
+            func: opensim.Function = function_set.get(idx)
+            conse_func: opensim.Constant = opensim.Constant.safeDownCast(func)
+            conse_func.setValue(activation)
 
     @require_reset
     def get_obs(self):
         self.model.realizeAcceleration(self._state)
         target_vec = Vec3(0, 0, 0)
         return Observation.build(self._model, self._state, target_vec)
+
+    def _build_brain(self):
+        # Add actuators as constant functions. Then, during simulations
+        # we will change levels of constants.
+        # One actuartor per each muscle
+        self._brain = opensim.PrescribedController()
+        self._actuator_idx: Dict[str, int] = {}
+        muscle_set = self._model.getMuscles()
+        for i in range(muscle_set.getSize()):
+            muscle = muscle_set.get(i)
+            name = muscle.getName()
+
+            func = opensim.Constant(0.0)
+            func.setName(name)
+            self._brain.addActuator(muscle)
+            self._brain.prescribeControlForActuator(name, func)
+
+            self._actuator_idx[name] = i
 
     @property
     def state(self) -> opensim.State:
