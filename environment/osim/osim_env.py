@@ -61,23 +61,18 @@ class OsimEnv(gym.Env[Observation, Action]):
 
         obs = self._get_obs()
         reward = 0
-        terminated = False
-        truncated, trunc_reason = self._get_truncated(obs)
 
         info: Dict[str, Any] = {}
-        if trunc_reason is not None:
-            info["truncated_reason"] = trunc_reason
+        terminated, truncated = False, False
+        if obs.body["pelvis"].pos.y < 0.6:
+            terminated = True
+            info["terminated_reason"] = "pelvis_height_drop"
+
+        if self.osim_model.step * self.osim_model.stepsize > self.time_limit:
+            truncated = True
+            info["truncated_reason"] = "time_limit_exceeded"
 
         return obs, reward, terminated, truncated, info
-
-    def _get_truncated(self, obs: Observation) -> Tuple[bool, str | None]:
-        if self.osim_model.step * self.osim_model.stepsize > self.time_limit:
-            return True, "time_limit_exceeded"
-
-        if obs.body["pelvis"].pos.y < 0.6:
-            return True, "pelvis_height_drop"
-
-        return False, None
 
     def render(self):
         raise NotImplementedError(
