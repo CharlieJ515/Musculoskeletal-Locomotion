@@ -25,7 +25,7 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
         self.output_dir = output_dir
         self.episode_idx = 0
 
-        if self.filename_format.endswith(".mot"):
+        if not self.filename_format.endswith(".mot"):
             raise ValueError(
                 f"file name must end with .mot, got {self.filename_format}"
             )
