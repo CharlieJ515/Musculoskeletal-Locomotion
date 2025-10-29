@@ -50,3 +50,9 @@ class Vec3:
         p = transform.p()
         r = transform.R().convertRotationToBodyFixedXYZ()
         return (cls.from_Vec3(p), cls.from_Vec3(r))
+
+    def rotate_y(self, yaw: float) -> "Vec3":
+        x_rot = math.cos(yaw) * self.x - math.sin(yaw) * self.z
+        z_rot = math.sin(yaw) * self.x + math.cos(yaw) * self.z
+
+        return Vec3(x_rot, self.y, z_rot)
