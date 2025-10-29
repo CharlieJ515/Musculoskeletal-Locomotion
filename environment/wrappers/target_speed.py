@@ -41,8 +41,8 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         self.target_speed = round(self.target_speed, 1)
 
         # target velocity is relative to the pelvis
-        target_vel = Vec3(self.target_speed, 0, 0)
-        obs = self._set_target_to_obs(obs, target_vel)
+        self.target_vel = Vec3(self.target_speed, 0, 0)
+        obs = self._set_target_to_obs(obs, self.target_vel)
         info["target_speed"] = self.target_speed
         return obs, info
 
@@ -57,18 +57,20 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
 
         pelvis = obs.body["pelvis"]
         pelvis_vel = pelvis.vel
-        pelvis_speed = math.hypot(pelvis_vel.x, pelvis_vel.z)
-        err = pelvis_speed - self.target_speed
-        reward = -(err**2)
+        yaw = pelvis.ang.y
+        pelvis_vel_rot = pelvis_vel.rotate_y(-yaw)
+        dv = self.target_vel - pelvis_vel_rot
+        dist = math.hypot(dv.x, dv.z)
 
-        if abs(err) <= self.speed_tolerance:
+        reward = -(dist**2)
+
+        if dist <= self.speed_tolerance:
             self.hold_counter = self.hold_counter + 1
             terminated = self.hold_counter >= self.hold_steps or terminated
             info["success"] = terminated
         else:
             self.hold_counter = 0
 
-        target_vel = Vec3(self.target_speed, 0, 0)
-        obs = self._set_target_to_obs(obs, target_vel)
+        obs = self._set_target_to_obs(obs, self.target_vel)
         info["target_speed"] = self.target_speed
         return obs, reward, terminated, truncated, info
