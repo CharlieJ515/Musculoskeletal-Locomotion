@@ -11,27 +11,25 @@ from environment.osim import Observation, Action, OsimEnv
 def flatten_observation(obs: Observation) -> np.ndarray:
     parts: List[float] = []
 
-    pelvis = obs.body["pelvis"]
-    parts.extend(
-        [
-            pelvis.vel.x,
-            pelvis.vel.y,
-            pelvis.vel.z,
-        ]
-    )
-
     for j in obs.joint.values():
         parts.extend(j.ang)
         parts.extend(j.ang_vel)
         parts.extend(j.ang_acc)
 
-    # for b in obs.body.values():
-    #     parts.extend(b.pos.to_tuple())
-    #     parts.extend(b.vel.to_tuple())
-    #     parts.extend(b.acc.to_tuple())
-    #     parts.extend(b.ang.to_tuple())
-    #     parts.extend(b.ang_vel.to_tuple())
-    #     parts.extend(b.ang_acc.to_tuple())
+    for b in obs.body.values():
+        parts.extend(b.pos.to_tuple())
+        parts.extend(b.vel.to_tuple())
+        parts.extend(b.acc.to_tuple())
+        parts.extend(b.ang.to_tuple())
+        parts.extend(b.ang_vel.to_tuple())
+        parts.extend(b.ang_acc.to_tuple())
+
+    parts.extend(obs.pelvis.pos.to_tuple())
+    parts.extend(obs.pelvis.vel.to_tuple())
+    parts.extend(obs.pelvis.acc.to_tuple())
+    parts.extend(obs.pelvis.ang.to_tuple())
+    parts.extend(obs.pelvis.ang_vel.to_tuple())
+    parts.extend(obs.pelvis.ang_acc.to_tuple())
 
     for m in obs.muscle.values():
         parts.append(m.activation)
@@ -66,7 +64,9 @@ def build_observation_space(model: opensim.Model) -> spaces.Box:
         dof = j.numCoordinates()
         length += dof * 3
 
-    length += 3  # pelvis speed
+    body_set = model.getBodySet()
+    length += body_set.getSize() * 18
+    length += 18  # pelvis
 
     muscles = model.getMuscles()
     length += muscles.getSize() * 4
