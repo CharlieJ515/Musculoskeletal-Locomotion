@@ -3,6 +3,7 @@ from typing import Tuple
 import math
 
 import opensim
+import numpy as np
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +36,8 @@ class Vec3:
     def to_tuple(self) -> tuple[float, float, float]:
         return (self.x, self.y, self.z)
 
-    @classmethod
-    def from_Vec3(cls, vec: opensim.Vec3) -> "Vec3":
+    @staticmethod
+    def from_Vec3(vec: opensim.Vec3) -> "Vec3":
         return Vec3(vec[0], vec[1], vec[2])
 
     @classmethod
@@ -49,10 +50,16 @@ class Vec3:
     def from_Transform(cls, transform: opensim.Transform) -> Tuple["Vec3", "Vec3"]:
         p = transform.p()
         r = transform.R().convertRotationToBodyFixedXYZ()
-        return (cls.from_Vec3(p), cls.from_Vec3(r))
+        return (cls.from_Vec3(r), cls.from_Vec3(p))
 
     def rotate_y(self, yaw: float) -> "Vec3":
         x_rot = math.cos(yaw) * self.x - math.sin(yaw) * self.z
         z_rot = math.sin(yaw) * self.x + math.cos(yaw) * self.z
 
         return Vec3(x_rot, self.y, z_rot)
+
+    @staticmethod
+    def from_numpy(arr: np.ndarray) -> "Vec3":
+        if arr.shape != (3,):
+            raise ValueError(f"Expected shape (3,), got {arr.shape}")
+        return Vec3(float(arr[0]), float(arr[1]), float(arr[2]))
