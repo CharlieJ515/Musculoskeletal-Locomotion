@@ -11,12 +11,6 @@ from utils.vec3 import Vec3
 ActType = TypeVar("ActType")
 
 
-def rotate_frame(x: float, z: float, yaw: float) -> Tuple[float, float]:
-    x_rot = math.cos(yaw) * x - math.sin(yaw) * z
-    z_rot = math.sin(yaw) * x + math.cos(yaw) * z
-    return x_rot, z_rot
-
-
 class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]):
     def __init__(
         self,
@@ -49,32 +43,22 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
         return round((d / self.decel_radius) * self.max_speed, 1)
 
     def _sample_target(self):
-        self.target_x = round(self.np_random.uniform(*self.box_x), 1)
-        self.target_z = round(self.np_random.uniform(*self.box_z), 1)
+        target_x = round(self.np_random.uniform(*self.box_x), 1)
+        target_z = round(self.np_random.uniform(*self.box_z), 1)
+        self.target = Vec3(target_x, 0, target_z)
 
-    def _get_target(self, x: float, z: float, yaw: float) -> tuple[Vec3, float, float]:
-        # TODO - modify this method to use Vec3 operations
-        dx = self.target_x - x
-        dz = self.target_z - z
-        dist = math.hypot(dx, dz)
+    def _get_target(self, pos: Vec3, yaw: float) -> tuple[Vec3, float, float]:
+        if pos.y != 0:
+            raise ValueError
+        difference = self.target - pos
+        distance = difference.magnitude()
 
-        if dist < 0.1:
-            return Vec3(0.0, 0.0, 0.0), dist, 0.0
+        if distance < 0.1:
+            return Vec3(0.0, 0.0, 0.0), distance, 0.0
 
-        dir_wx, dir_wz = dx / dist, dz / dist
-        vf, vl = rotate_frame(dir_wx, dir_wz, yaw)
-        speed = self._speed_from_distance(dist)
-        return Vec3(vf * speed, 0.0, vl * speed), dist, speed
-
-    def _success_metrics(
-        self,
-        dist: float,
-        update_counter: bool = True,
-    ) -> Tuple[bool, bool]:
-        in_range = dist <= self.r_target
-        self.hold_counter = self.hold_counter + 1 if in_range and update_counter else 0
-        reached = self.hold_counter >= self.hold_steps
-        return in_range, reached
+        direction = difference.norm().rotate_y(-yaw)
+        target_speed = self._speed_from_distance(distance)
+        return direction * target_speed, distance, target_speed
 
     def reset(
         self,
@@ -82,7 +66,6 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> Tuple[Observation, dict[str, Any]]:
-
         obs, info = self.env.reset(seed=seed, options=options)
         if obs.normalized:
             raise RuntimeError(
@@ -92,26 +75,22 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
         self.hold_counter = 0
         self._sample_target()
 
-        pelvis = obs.body["pelvis"]
-        x, z = pelvis.pos.x, pelvis.pos.z
-        yaw = pelvis.ang.y
+        pos = dataclasses.replace(obs.pelvis.pos, y=0)
+        yaw = obs.pelvis.ang.y
 
-        target_vel, dist, target_speed = self._get_target(x, z, yaw)
-        in_range, success = self._success_metrics(dist, update_counter=False)
+        target_vel, dist, target_speed = self._get_target(pos, yaw)
+        in_range = dist <= self.r_target
+        success = self.hold_counter >= self.hold_steps
 
         obs = self._set_target_to_obs(obs, target_vel)
-        info.update(
-            {
-                "distance_to_target": dist,
-                "in_range": in_range,
-                "hold_counter": self.hold_counter,
-                "success": success,
-                "target_speed": target_speed,
-                "target_position_xz": (self.target_x, self.target_z),
-                "hold_steps": self.hold_steps,
-                "r_target": self.r_target,
-            }
-        )
+        info["target"] = {
+            "in_range": in_range,
+            "hold_counter": self.hold_counter,
+            "success": success,
+            "distance_to_target": dist,
+            "target_speed": target_speed,
+            "target_position": self.target,
+        }
         return obs, info
 
     def step(
@@ -123,24 +102,23 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
                 "Reward from base environment is being overwritten with reward from TargetVelocityWrapper"
             )
 
-        pelvis = obs.body["pelvis"]
-        x, z = pelvis.pos.x, pelvis.pos.z
-        yaw = pelvis.ang.y
+        pos = dataclasses.replace(obs.pelvis.pos, y=0)
+        yaw = obs.pelvis.ang.y
+        target_vel, dist, target_speed = self._get_target(pos, yaw)
 
-        target_vel, dist, target_speed = self._get_target(x, z, yaw)
-        in_range, success = self._success_metrics(dist)
+        in_range = dist <= self.r_target
+        self.hold_counter = self.hold_counter + 1 if in_range else 0
+        success = self.hold_counter >= self.hold_steps
+        terminated = terminated or success
 
         reward = -dist
-        terminated = terminated or success
         obs = self._set_target_to_obs(obs, target_vel)
-        info.update(
-            {
-                "distance_to_target": dist,
-                "in_range": in_range,
-                "hold_counter": self.hold_counter,
-                "success": success,
-                "target_speed": target_speed,
-                "target_position_xz": (self.target_x, self.target_z),
-            }
-        )
+        info["target"] = {
+            "in_range": in_range,
+            "hold_counter": self.hold_counter,
+            "success": success,
+            "distance_to_target": dist,
+            "target_speed": target_speed,
+            "target_position": self.target,
+        }
         return obs, reward, terminated, truncated, info
