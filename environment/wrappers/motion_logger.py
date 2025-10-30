@@ -38,7 +38,6 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
         ]
 
         self.table: Optional[opensim.TimeSeriesTable] = None
-        self._reset_table(self.coord_names)
 
     def _get_model(self) -> opensim.Model:
         base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
