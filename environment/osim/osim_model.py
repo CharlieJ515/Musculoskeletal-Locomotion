@@ -1,16 +1,18 @@
 from pathlib import Path
 from typing import Dict
 import warnings
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import opensim
-
-from utils.vec3 import Vec3
 
 from .pose import Pose
 from .action import Action
 from .observation import Observation, NormSpec
 from .index import build_index_bundle
 from utils import require_reset
+from utils.vec3 import Vec3
 
 
 class OsimModel:
