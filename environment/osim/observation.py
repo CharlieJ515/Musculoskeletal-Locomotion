@@ -255,7 +255,7 @@ class BodyState:
         V_GA = ref.getVelocityInGround(state)
         A_GA = ref.getAccelerationInGround(state)
 
-        X_AB = ref.findTransformBetween(state, body)
+        X_AB = body.findTransformBetween(state, ref)
 
         ang, pos = Vec3.from_Transform(X_AB)
         ang_vel, vel = find_relative_velocity(X_GA, V_GA, X_GB, V_GB)
