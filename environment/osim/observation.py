@@ -3,9 +3,13 @@ from dataclasses import dataclass
 from math import pi
 
 import opensim
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
 
 from .index import body_index
 from utils.vec3 import Vec3
+
 
 Range = Tuple[float, float]
 
@@ -22,13 +26,13 @@ class NormSpec:
     @classmethod
     def build(cls, T: float, model: opensim.Model, state: opensim.State) -> Self:
         mass = float(model.getTotalMass(state))
-        g = model.getGravity().get(1)
+        g = abs(model.getGravity().get(1))
 
         # length scale L = height/2 (~ pelvis height)
         body_set = model.getBodySet()
         pelvis = body_set.get("pelvis")
         p = pelvis.getTransformInGround(state).p()
-        L = p
+        L = p[1]
 
         # joint
         joint_set = model.getJointSet()
@@ -135,6 +139,86 @@ class JointState:
         )
 
 
+def rot_to_np(R: opensim.Rotation) -> np.ndarray:
+    return np.array(
+        [
+            [R.get(0, 0), R.get(0, 1), R.get(0, 2)],
+            [R.get(1, 0), R.get(1, 1), R.get(1, 2)],
+            [R.get(2, 0), R.get(2, 1), R.get(2, 2)],
+        ],
+        dtype=float,
+    )
+
+
+def vec3_to_np(v: opensim.Vec3) -> np.ndarray:
+    return np.array([v.get(0), v.get(1), v.get(2)], dtype=float)
+
+
+def spatial_to_np(v: opensim.SpatialVec):
+    return vec3_to_np(v.get(0)), vec3_to_np(v.get(1))
+
+
+def find_relative_velocity(
+    X_GA: opensim.Transform,
+    V_GA: opensim.SpatialVec,
+    X_GB: opensim.Transform,
+    V_GB: opensim.SpatialVec,
+) -> tuple[Vec3, Vec3]:
+    R_GA = rot_to_np(X_GA.R())
+    R_AG = R_GA.T
+    p_GA = vec3_to_np(X_GA.p())
+    p_GB = vec3_to_np(X_GB.p())
+
+    w_GA, v_GA = spatial_to_np(V_GA)
+    w_GB, v_GB = spatial_to_np(V_GB)
+
+    r = p_GB - p_GA
+
+    # ω_AB in A
+    w_AB = R_AG @ (w_GB - w_GA)
+    # v_AB in A
+    v_AB = R_AG @ (v_GB - v_GA - np.cross(w_GA, r))
+
+    return Vec3.from_numpy(w_AB), Vec3.from_numpy(v_AB)
+
+
+def find_relative_acceleration(
+    X_GA: opensim.Transform,
+    V_GA: opensim.SpatialVec,
+    A_GA: opensim.SpatialVec,
+    X_GB: opensim.Transform,
+    V_GB: opensim.SpatialVec,
+    A_GB: opensim.SpatialVec,
+) -> tuple[Vec3, Vec3]:
+    R_GA = rot_to_np(X_GA.R())
+    R_AG = R_GA.T
+    p_GA = vec3_to_np(X_GA.p())
+    p_GB = vec3_to_np(X_GB.p())
+
+    w_GA, v_GA = spatial_to_np(V_GA)
+    w_GB, v_GB = spatial_to_np(V_GB)
+    alpha_GA, a_GA = spatial_to_np(A_GA)
+    alpha_GB, a_GB = spatial_to_np(A_GB)
+
+    r = p_GB - p_GA
+
+    # α_AB in A
+    alpha_AB = R_AG @ (alpha_GB - alpha_GA)
+
+    # Relative linear velocity in G of B-origin w.r.t. A-origin:
+    v_rel_G = (v_GB - v_GA) - np.cross(w_GA, r)
+
+    # a_AB in A
+    a_AB = R_AG @ (
+        (a_GB - a_GA)
+        - np.cross(alpha_GA, r)
+        - np.cross(w_GA, np.cross(w_GA, r))
+        - 2.0 * np.cross(w_GA, v_rel_G)
+    )
+
+    return Vec3.from_numpy(alpha_AB), Vec3.from_numpy(a_AB)
+
+
 @dataclass(frozen=True, slots=True)
 class BodyState:
     pos: Vec3  # position
@@ -144,7 +228,7 @@ class BodyState:
     ang_vel: Vec3  # angular velocity
     ang_acc: Vec3  # angular acceleration
 
-    reference: opensim.Frame
+    ref_frame: opensim.Frame
     normalized: bool = False
 
     def norm(self, ref: "BodyState", L: float, T: float) -> "BodyState":
@@ -155,7 +239,7 @@ class BodyState:
             ang=self.ang / pi,
             ang_vel=self.ang_vel * T,
             ang_acc=self.ang_acc * (T * T),
-            reference=self.reference,
+            ref_frame=self.ref_frame,
             normalized=True,
         )
 
@@ -163,29 +247,19 @@ class BodyState:
     def from_Body(
         cls, body: opensim.Body, ref: opensim.Frame, state: opensim.State
     ) -> "BodyState":
-        # Ground-expressed poses/vels/accs
         X_GB = body.getTransformInGround(state)
-        V_GB = body.getVelocityInGround(state)  # SpatialVec {omega; v}
+        V_GB = body.getVelocityInGround(state)
         A_GB = body.getAccelerationInGround(state)
 
-        pos, ang = Vec3.from_Transform(X_GB)
-        vel, ang_vel = Vec3.from_SpatialVec(V_GB)
-        acc, ang_acc = Vec3.from_SpatialVec(A_GB)
+        X_GA = ref.getTransformInGround(state)
+        V_GA = ref.getVelocityInGround(state)
+        A_GA = ref.getAccelerationInGround(state)
 
-        # X_GA = ref.getTransformInGround(state)
-        # V_GA = ref.getVelocityInGround(state)
-        # A_GA = ref.getAccelerationInGround(state)
+        X_AB = ref.findTransformBetween(state, body)
 
-        # # Pose of Body relative to 'frame' (A): X_AB
-        # X_AB = ref.findTransformBetween(state, body)  # Body in frame
-
-        # # Relative spatial velocity/acceleration of Body in 'frame', expressed in 'frame'
-        # V_AB = opensim.findRelativeVelocity(X_GA, V_GA, X_GB, V_GB)
-        # A_AB = opensim.findRelativeAcceleration(X_GA, V_GA, A_GA, X_GB, V_GB, A_GB)
-
-        # pos, ang = Vec3.from_Transform(X_AB)
-        # vel, ang_vel = Vec3.from_SpatialVec(V_AB)
-        # acc, ang_acc = Vec3.from_SpatialVec(A_AB)
+        ang, pos = Vec3.from_Transform(X_AB)
+        ang_vel, vel = find_relative_velocity(X_GA, V_GA, X_GB, V_GB)
+        ang_acc, acc = find_relative_acceleration(X_GA, V_GA, A_GA, X_GB, V_GB, A_GB)
 
         return cls(
             pos=pos,
@@ -194,7 +268,7 @@ class BodyState:
             ang=ang,
             ang_vel=ang_vel,
             ang_acc=ang_acc,
-            reference=ref,
+            ref_frame=ref,
         )
 
 
