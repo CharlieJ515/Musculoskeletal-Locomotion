@@ -6,13 +6,17 @@ import opensim
 from .observation import FootState, Observation
 from .action import Action
 
-class Reward(ABC):
+
+class RewardComponent(ABC):
     @abstractmethod
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
         pass
 
     def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
         pass
+
 
 #
 # def _require_stage(model: osim.Model, state: osim.State, stage: str = "Velocity"):
@@ -53,58 +57,77 @@ class Reward(ABC):
 #     return float(max(P, 0.0))
 #
 
-class VelocityReward(Reward):
-    __slots__ = ['scale']
-    def __init__(self, scale: float=1):
+
+class VelocityReward(RewardComponent):
+    __slots__ = ["scale"]
+
+    def __init__(self, scale: float = 1):
         self.scale = scale
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
-        pelvis_vel = obs.body['pelvis'].vel
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
+        pelvis_vel = obs.body["pelvis"].vel
         target_vel = obs.target_velocity
-        reward = ((pelvis_vel.x - target_vel.x)**2 + (pelvis_vel.z - target_vel.z)**2)**0.5
+        reward = (
+            (pelvis_vel.x - target_vel.x) ** 2 + (pelvis_vel.z - target_vel.z) ** 2
+        ) ** 0.5
         return reward * self.scale
 
 
+class EnergyReward(RewardComponent):
+    __slots__ = ["probe_name"]
 
-class EnergyReward(Reward):
-    __slots__=['probe_name']
     def __init__(self, probe_name: str):
         self.probe_name = probe_name
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
         # probe = obs.probe[self.probe_name]
         #
         # vec = probe
         raise NotImplementedError
 
 
-class SmoothnessReward(Reward):
-    __slots__=['_prev_action', 'scale']
-    def __init__(self, scale: float=1):
+class SmoothnessReward(RewardComponent):
+    __slots__ = ["_prev_action", "scale"]
+
+    def __init__(self, scale: float = 1):
         self.scale = scale
 
     def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
         self._prev_action = Action.from_opensim(model, state)
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
         cost = 0
         for name in Action.muscle_order:
             current_act = act[name]
-            prev_act= self._prev_action[name]
+            prev_act = self._prev_action[name]
 
             cost += (current_act - prev_act) ** 2
-        cost = cost/len(Action.muscle_order)
+        cost = cost / len(Action.muscle_order)
         return -cost * self.scale
 
 
-class HeadStabilityReward(Reward):
-    __slots__=['acc_scale', 'ang_vel_scale', 'head_marker_name']
-    def __init__(self, head_marker_name: str="Top.Head", acc_scale: float = 1.0, ang_vel_scale: float = 1.0):
+class HeadStabilityReward(RewardComponent):
+    __slots__ = ["acc_scale", "ang_vel_scale", "head_marker_name"]
+
+    def __init__(
+        self,
+        head_marker_name: str = "Top.Head",
+        acc_scale: float = 1.0,
+        ang_vel_scale: float = 1.0,
+    ):
         self.acc_scale = acc_scale
         self.ang_vel_scale = ang_vel_scale
         self.head_marker_name = head_marker_name
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
         """
         Head stability = -(acc_scale * linear acceleration^2 + ang_vel_scale * angular velocity^2)
         However computing only linear acceleration as of right now
@@ -112,36 +135,41 @@ class HeadStabilityReward(Reward):
         head_marker = obs.marker[self.head_marker_name]
         acc = head_marker.acc
         acc_cost = -self.acc_scale * (acc.x**2 + acc.y**2 + acc.z**2)
-        
+
         return acc_cost
 
 
+class AliveReward(RewardComponent):
+    __slots__ = ["scale"]
 
-class AliveReward(Reward):
-    __slots__ = ['scale']
-    def __init__(self, scale: float=1):
+    def __init__(self, scale: float = 1):
         self.scale = scale
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
         return self.scale
 
 
-class FootImpactPenalty(Reward):
-    __slots__=['stepsize', 'scale', '_prev_foot']
-    def __init__(self, stepsize: float, scale: float=1):
+class FootImpactPenalty(RewardComponent):
+    __slots__ = ["stepsize", "scale", "_prev_foot"]
+
+    def __init__(self, stepsize: float, scale: float = 1):
         self.stepsize = stepsize
         self.scale = scale
 
     def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
         self._prev_foot: Dict[str, FootState] = obs.foot
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> float:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
         cost = 0.0
         current_foot = obs.foot
         for name in current_foot.keys():
             cur = current_foot[name].ground.force.y
             prev = self._prev_foot[name].ground.force.y
-            dFdt = max(0, cur-prev) / self.stepsize
+            dFdt = max(0, cur - prev) / self.stepsize
             cost += dFdt
 
         self._prev_foot = current_foot
@@ -185,38 +213,43 @@ class FootImpactPenalty(Reward):
 
 
 class CompositeReward:
-    __slots__=['terms', 'weights']
-    def __init__(self, terms: Dict[str, Reward], weights: Dict[str, float]):
-        self.terms = terms
+    __slots__ = ["components", "weights"]
+
+    def __init__(
+        self, components: Dict[str, RewardComponent], weights: Dict[str, float]
+    ):
+        self.components = components
         self.weights = weights
 
         self._check_key()
 
     def _check_key(self):
-        term_keys = set(self.terms.keys())
+        component_keys = set(self.components.keys())
         weight_keys = set(self.weights.keys())
 
-        missing_weights = term_keys - weight_keys
-        missing_terms = weight_keys - term_keys
+        missing_weights = component_keys - weight_keys
+        missing_components = weight_keys - component_keys
 
-        if missing_weights or missing_terms:
+        if missing_weights or missing_components:
             parts = []
             if missing_weights:
                 parts.append(f"weights missing keys: {sorted(missing_weights)}")
-            if missing_terms:
-                parts.append(f"terms missing keys: {sorted(missing_terms)}")
+            if missing_components:
+                parts.append(f"components missing keys: {sorted(missing_components)}")
             raise ValueError("Reward mapping key mismatch: " + "; ".join(parts))
 
     def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
-        for t in self.terms.values():
+        for t in self.components.values():
             t.reset(model, state, obs)
 
-    def compute(self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action) -> Tuple[float, Dict[str, float]]:
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> Tuple[float, Dict[str, float]]:
         total = 0.0
         rewards: Dict[str, float] = {}
-        for name, term in self.terms.items():
+        for name, component in self.components.items():
             w = self.weights[name]
-            reward = term.compute(model, state, obs, act)
+            reward = component.compute(model, state, obs, act)
             total += w * reward
             rewards[name] = reward
         return float(total), rewards
