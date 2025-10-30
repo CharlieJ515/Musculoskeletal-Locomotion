@@ -396,6 +396,7 @@ class FootState:
 class Observation:
     joint: Dict[str, JointState]
     body: Dict[str, BodyState]
+    pelvis: BodyState
     muscle: Dict[str, MuscleState]
     foot: Dict[str, FootState]
     force: Dict[str, Dict[str, float]]
@@ -431,6 +432,9 @@ class Observation:
             b = body_set.get(i)
             name = b.getName()
             body[name] = BodyState.from_Body(b, pelvis, state)
+
+        ground = model.getGround()
+        pelvis_state = BodyState.from_Body(pelvis, ground, state)
 
         # muscle
         muscle_set = model.getMuscles()
@@ -482,6 +486,7 @@ class Observation:
         return Observation(
             joint=joint,
             body=body,
+            pelvis=pelvis_state,
             muscle=muscle,
             foot=foot,
             force=force,
@@ -537,6 +542,7 @@ class Observation:
         return Observation(
             joint=joint,
             body=body,
+            pelvis=self.pelvis,
             muscle=muscle,
             foot=foot,
             force=force,
