@@ -38,7 +38,7 @@ class Vec3:
 
     @staticmethod
     def from_Vec3(vec: opensim.Vec3) -> "Vec3":
-        return Vec3(vec[0], vec[1], vec[2])
+        return Vec3(vec.get(0), vec.get(1), vec.get(2))
 
     @classmethod
     def from_SpatialVec(cls, vec: opensim.SpatialVec) -> Tuple["Vec3", "Vec3"]:
