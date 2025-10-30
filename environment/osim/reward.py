@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict, Tuple
+import dataclasses
 
 import opensim
 
@@ -67,12 +68,12 @@ class VelocityReward(RewardComponent):
     def compute(
         self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
     ) -> float:
-        pelvis_vel = obs.body["pelvis"].vel
+        vel = dataclasses.replace(obs.pelvis.vel, y=0)
+        yaw = obs.pelvis.ang.y
+        vel_rot = vel.rotate_y(-yaw)
         target_vel = obs.target_velocity
-        reward = (
-            (pelvis_vel.x - target_vel.x) ** 2 + (pelvis_vel.z - target_vel.z) ** 2
-        ) ** 0.5
-        return reward * self.scale
+        penalty = -(target_vel - vel_rot).magnitude()
+        return penalty * self.scale
 
 
 class EnergyReward(RewardComponent):
