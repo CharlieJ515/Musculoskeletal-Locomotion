@@ -13,9 +13,6 @@ from .index import build_index_bundle
 from utils import require_reset
 
 
-class RangeError(ValueError): ...
-
-
 class OsimModel:
     def __init__(
         self,
@@ -127,7 +124,7 @@ class OsimModel:
             if q is not None:
                 lo, hi = coord.getRangeMin(), coord.getRangeMax()
                 if not (lo <= q <= hi):
-                    raise RangeError(
+                    raise ValueError(
                         f"Coordinate '{name}' out of range: {q:.4f} not in [{lo:.4f}, {hi:.4f}]."
                     )
                 coord.setValue(self._state, q)
