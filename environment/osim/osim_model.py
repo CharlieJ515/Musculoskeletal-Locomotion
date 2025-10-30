@@ -99,6 +99,9 @@ class OsimModel:
             norm_spec = NormSpec.build(self.stepsize, self._model, self._state)
             Observation.norm_spec = norm_spec
 
+        if self.visualize:
+            self._model.getVisualizer().show(self._state)
+
         self.step = 0
         self._was_reset = True
 
