@@ -64,7 +64,7 @@ class OsimEnv(gym.Env[Observation, Action]):
 
         info: Dict[str, Any] = {}
         terminated, truncated = False, False
-        if obs.body["pelvis"].pos.y < 0.6:
+        if obs.pelvis.pos.y < 0.6:
             terminated = True
             info["terminated_reason"] = "pelvis_height_drop"
 
