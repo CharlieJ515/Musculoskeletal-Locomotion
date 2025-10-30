@@ -38,6 +38,8 @@ class OsimModel:
         self.visualize = visualize
         self._model.setUseVisualizer(self.visualize)
 
+        self._init_state = self._model.initSystem()
+
         self.integrator_accuracy = integrator_accuracy
         self.stepsize = stepsize
         # indicator to prevent running other methods before reset
@@ -88,7 +90,7 @@ class OsimModel:
         return self._model
 
     def reset(self, pose: Pose) -> Observation:
-        self._state = self._model.initSystem()
+        self._state = self._init_state
         self._state.setTime(0)
         self._reset_pose(pose)
         self._model.equilibrateMuscles(self._state)
