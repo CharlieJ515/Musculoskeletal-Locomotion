@@ -25,7 +25,7 @@ class Vec3:
         return Vec3(self.x / s, self.y / s, self.z / s)
 
     def magnitude(self) -> float:
-        return (self.x**2 + self.y**2 + self.z**2) ** 0.5
+        return math.hypot(self.x, self.y, self.z)
 
     def norm(self) -> "Vec3":
         magnitude = self.magnitude()
