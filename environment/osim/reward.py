@@ -62,7 +62,7 @@ class RewardComponent(ABC):
 class VelocityReward(RewardComponent):
     __slots__ = ["scale"]
 
-    def __init__(self, scale: float = 1):
+    def __init__(self, scale: float = 1.0):
         self.scale = scale
 
     def compute(
@@ -77,24 +77,25 @@ class VelocityReward(RewardComponent):
 
 
 class EnergyReward(RewardComponent):
-    __slots__ = ["probe_name"]
+    __slots__ = ["scale"]
 
-    def __init__(self, probe_name: str):
-        self.probe_name = probe_name
+    def __init__(self, scale: float = 1.0):
+        self.scale = scale
 
     def compute(
         self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
     ) -> float:
-        # probe = obs.probe[self.probe_name]
-        #
-        # vec = probe
-        raise NotImplementedError
+        energy = 0.0
+        for name, muscle in obs.muscle.items():
+            energy += muscle.activation**2
+        energy = energy / len(obs.muscle)
+        return energy * self.scale
 
 
 class SmoothnessReward(RewardComponent):
     __slots__ = ["_prev_action", "scale"]
 
-    def __init__(self, scale: float = 1):
+    def __init__(self, scale: float = 1.0):
         self.scale = scale
 
     def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
@@ -110,6 +111,7 @@ class SmoothnessReward(RewardComponent):
 
             cost += (current_act - prev_act) ** 2
         cost = cost / len(Action.muscle_order)
+        self._prev_action = act
         return -cost * self.scale
 
 
@@ -143,7 +145,7 @@ class HeadStabilityReward(RewardComponent):
 class AliveReward(RewardComponent):
     __slots__ = ["scale"]
 
-    def __init__(self, scale: float = 1):
+    def __init__(self, scale: float = 1.0):
         self.scale = scale
 
     def compute(
@@ -155,7 +157,7 @@ class AliveReward(RewardComponent):
 class FootImpactPenalty(RewardComponent):
     __slots__ = ["stepsize", "scale", "_prev_foot"]
 
-    def __init__(self, stepsize: float, scale: float = 1):
+    def __init__(self, stepsize: float, scale: float = 1.0):
         self.stepsize = stepsize
         self.scale = scale
 
@@ -200,7 +202,7 @@ class FootImpactPenalty(RewardComponent):
 #                                 for i in range(model.getJointSet().getSize())]
 #         Mg = model.getTotalMass(state) * abs(model.get_gravity()[1]) if self.bw_norm else 1.0
 #
-#         dt = float(getattr(obs, "dt", 0.01))
+#         dt = float(getattr(obs, "dt", 0.01.0))
 #         cost = 0.0
 #         for name in self.joint_names:
 #             j = model.getJointSet().get(name)
