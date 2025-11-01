@@ -106,7 +106,8 @@ class SimpleEnvWrapper(gym.Wrapper[np.ndarray, np.ndarray, Observation, Action])
         options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         obs, info = self.env.reset(seed=seed, options=options)
-        obs_flatten = flatten_observation(obs)
+        obs_norm = obs.norm()
+        obs_flatten = flatten_observation(obs_norm)
 
         return obs_flatten, info
 
@@ -115,5 +116,6 @@ class SimpleEnvWrapper(gym.Wrapper[np.ndarray, np.ndarray, Observation, Action])
     ) -> tuple[np.ndarray, SupportsFloat, bool, bool, dict[str, Any]]:
         action_ = Action.from_numpy(action)
         obs, reward, terminated, truncated, info = self.env.step(action_)
-        obs_flatten = flatten_observation(obs)
+        obs_norm = obs.norm()
+        obs_flatten = flatten_observation(obs_norm)
         return obs_flatten, reward, terminated, truncated, info
