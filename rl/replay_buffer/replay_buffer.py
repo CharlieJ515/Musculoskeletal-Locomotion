@@ -25,7 +25,7 @@ class ReplayBuffer(BaseReplayBuffer):
         obs_dtype: torch.dtype = torch.float32,
         action_dtype: torch.dtype = torch.float32,
         reward_dtype: torch.dtype = torch.float32,
-        name:str = "PlainReplayBuffer",
+        name: str = "PlainReplayBuffer",
     ) -> None:
         """
         Initialize the replay buffer with preallocated storage.
@@ -44,10 +44,18 @@ class ReplayBuffer(BaseReplayBuffer):
         self.name = name
 
         # storage
-        self._obs = torch.empty((capacity, *obs_shape), dtype=obs_dtype, device=self._device)
-        self._actions = torch.empty((capacity, *action_shape), dtype=action_dtype, device=self._device)
-        self._rewards = torch.empty((capacity, *reward_shape), dtype=reward_dtype, device=self._device)
-        self._next_obs = torch.empty((capacity, *obs_shape), dtype=obs_dtype, device=self._device)
+        self._obs = torch.empty(
+            (capacity, *obs_shape), dtype=obs_dtype, device=self._device
+        )
+        self._actions = torch.empty(
+            (capacity, *action_shape), dtype=action_dtype, device=self._device
+        )
+        self._rewards = torch.empty(
+            (capacity, *reward_shape), dtype=reward_dtype, device=self._device
+        )
+        self._next_obs = torch.empty(
+            (capacity, *obs_shape), dtype=obs_dtype, device=self._device
+        )
         self._dones = torch.empty((capacity,), dtype=torch.bool, device=self._device)
 
         # ring buffer pointers
@@ -81,7 +89,9 @@ class ReplayBuffer(BaseReplayBuffer):
         :type transition: Union[Transition, TransitionBatch]
         """
         # normalize to batch
-        batch = transition.to_batch() if isinstance(transition, Transition) else transition
+        batch = (
+            transition.to_batch() if isinstance(transition, Transition) else transition
+        )
 
         B = len(batch)
         if B <= 0:
@@ -89,11 +99,17 @@ class ReplayBuffer(BaseReplayBuffer):
 
         # sanity check on shapes
         if tuple(batch.obs.shape[1:]) != self._obs_shape:
-            raise ValueError(f"obs shape mismatch: got {tuple(batch.obs.shape[1:])}, expected {self._obs_shape}")
+            raise ValueError(
+                f"obs shape mismatch: got {tuple(batch.obs.shape[1:])}, expected {self._obs_shape}"
+            )
         if tuple(batch.actions.shape[1:]) != self._action_shape:
-            raise ValueError(f"actions shape mismatch: got {tuple(batch.actions.shape[1:])}, expected {self._action_shape}")
+            raise ValueError(
+                f"actions shape mismatch: got {tuple(batch.actions.shape[1:])}, expected {self._action_shape}"
+            )
         if tuple(batch.rewards.shape[1:]) != self._reward_shape:
-            raise ValueError(f"rewards shape mismatch: got {tuple(batch.rewards.shape[1:])}, expected {self._reward_shape}")
+            raise ValueError(
+                f"rewards shape mismatch: got {tuple(batch.rewards.shape[1:])}, expected {self._reward_shape}"
+            )
 
         # move to buffer device
         batch = batch.to(self._device, non_blocking=True)
@@ -128,7 +144,7 @@ class ReplayBuffer(BaseReplayBuffer):
         self._ptr = (self._ptr + B) % self.capacity
         self._size = min(self._size + B, self.capacity)
 
-    def sample(self, batch_size: int, *, pin_memory:bool=True) -> TransitionBatch:
+    def sample(self, batch_size: int, *, pin_memory: bool = True) -> TransitionBatch:
         """
         Sample a batch of transitions from the buffer.
 
@@ -154,27 +170,41 @@ class ReplayBuffer(BaseReplayBuffer):
         if pin_memory and self._device.type == "cuda":
             warnings.warn(
                 "pin_memory=True has no effect because the buffer is already on CUDA.",
-                stacklevel=2
+                stacklevel=2,
             )
 
         if pin_memory and self._device.type == "cpu":
-            obs     = torch.empty((batch_size, *self._obs_shape), dtype=self._obs.dtype,     pin_memory=True)
-            actions = torch.empty((batch_size, *self._action_shape), dtype=self._actions.dtype, pin_memory=True)
-            rewards = torch.empty((batch_size, *self._reward_shape), dtype=self._rewards.dtype, pin_memory=True)
-            next_obs= torch.empty((batch_size, *self._obs_shape), dtype=self._next_obs.dtype,pin_memory=True)
-            dones   = torch.empty((batch_size,),                  dtype=self._dones.dtype,   pin_memory=True)
+            obs = torch.empty(
+                (batch_size, *self._obs_shape), dtype=self._obs.dtype, pin_memory=True
+            )
+            actions = torch.empty(
+                (batch_size, *self._action_shape),
+                dtype=self._actions.dtype,
+                pin_memory=True,
+            )
+            rewards = torch.empty(
+                (batch_size, *self._reward_shape),
+                dtype=self._rewards.dtype,
+                pin_memory=True,
+            )
+            next_obs = torch.empty(
+                (batch_size, *self._obs_shape),
+                dtype=self._next_obs.dtype,
+                pin_memory=True,
+            )
+            dones = torch.empty((batch_size,), dtype=self._dones.dtype, pin_memory=True)
 
-            torch.index_select(self._obs,      0, idx, out=obs)
-            torch.index_select(self._actions,  0, idx, out=actions)
-            torch.index_select(self._rewards,  0, idx, out=rewards)
+            torch.index_select(self._obs, 0, idx, out=obs)
+            torch.index_select(self._actions, 0, idx, out=actions)
+            torch.index_select(self._rewards, 0, idx, out=rewards)
             torch.index_select(self._next_obs, 0, idx, out=next_obs)
-            torch.index_select(self._dones,    0, idx, out=dones)
+            torch.index_select(self._dones, 0, idx, out=dones)
         else:
-            obs      = self._obs.index_select(0, idx)
-            actions  = self._actions.index_select(0, idx)
-            rewards  = self._rewards.index_select(0, idx)
+            obs = self._obs.index_select(0, idx)
+            actions = self._actions.index_select(0, idx)
+            rewards = self._rewards.index_select(0, idx)
             next_obs = self._next_obs.index_select(0, idx)
-            dones    = self._dones.index_select(0, idx)
+            dones = self._dones.index_select(0, idx)
 
         new = TransitionBatch(
             obs=obs,
@@ -212,7 +242,7 @@ class ReplayBuffer(BaseReplayBuffer):
 
         This method records key configuration parameters of the replay buffer
         (e.g., capacity, observation/action/reward shapes, and device)
-        as parameters in the current MLflow run.  
+        as parameters in the current MLflow run.
 
         :param prefix: String prefix added to all parameter names
                        to group them in MLflow (e.g., ``"buffer/"``).
@@ -222,14 +252,57 @@ class ReplayBuffer(BaseReplayBuffer):
         :rtype: None
         """
         if not mlflow.active_run():
-            raise RuntimeError("No active MLflow run found. Call mlflow.start_run() first.")
+            raise RuntimeError(
+                "No active MLflow run found. Call mlflow.start_run() first."
+            )
 
         p = prefix
-        mlflow.log_params({
-            f"{p}name": self.name,
-            f"{p}capacity": self.capacity,
-            f"{p}obs_shape": self._obs_shape,
-            f"{p}action_shape": self._action_shape,
-            f"{p}reward_shape": self._reward_shape,
-            f"{p}device": self.device,
-        })
+        mlflow.log_params(
+            {
+                f"{p}name": self.name,
+                f"{p}capacity": self.capacity,
+                f"{p}obs_shape": self._obs_shape,
+                f"{p}action_shape": self._action_shape,
+                f"{p}reward_shape": self._reward_shape,
+                f"{p}device": self.device,
+            }
+        )
+
+    def all(self, *, pin_memory: bool = True) -> TransitionBatch:
+        """
+        Return all currently stored transitions as a single TransitionBatch.
+
+        :param pin_memory: Whether to pin memory for faster GPU transfer (only effective on CPU).
+        :type pin_memory: bool
+        :return: TransitionBatch containing all stored transitions.
+        :rtype: TransitionBatch
+        """
+        if self._size == 0:
+            raise ValueError("Replay buffer is empty. Nothing to return.")
+
+        if pin_memory and self._device.type == "cuda":
+            warnings.warn(
+                "pin_memory=True has no effect because the buffer is already on CUDA.",
+                stacklevel=2,
+            )
+
+        if pin_memory and self._device.type == "cpu":
+            obs = self._obs[: self._size].clone().pin_memory()
+            actions = self._actions[: self._size].clone().pin_memory()
+            rewards = self._rewards[: self._size].clone().pin_memory()
+            next_obs = self._next_obs[: self._size].clone().pin_memory()
+            dones = self._dones[: self._size].clone().pin_memory()
+        else:
+            obs = self._obs[: self._size].clone()
+            actions = self._actions[: self._size].clone()
+            rewards = self._rewards[: self._size].clone()
+            next_obs = self._next_obs[: self._size].clone()
+            dones = self._dones[: self._size].clone()
+
+        return TransitionBatch(
+            obs=obs,
+            actions=actions,
+            rewards=rewards,
+            next_obs=next_obs,
+            dones=dones,
+        )
