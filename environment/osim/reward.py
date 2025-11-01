@@ -89,7 +89,7 @@ class EnergyReward(RewardComponent):
         for name, muscle in obs.muscle.items():
             energy += muscle.activation**2
         energy = energy / len(obs.muscle)
-        return energy * self.scale
+        return -energy * self.scale
 
 
 class SmoothnessReward(RewardComponent):
