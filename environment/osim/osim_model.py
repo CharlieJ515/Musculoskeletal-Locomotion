@@ -3,6 +3,8 @@ from typing import Dict
 import warnings
 import os
 
+# to prevent openmp error when loading opensim window
+# and matplotlib plot window at the same time
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import opensim
