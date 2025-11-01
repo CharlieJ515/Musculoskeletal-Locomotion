@@ -1,3 +1,6 @@
+# ignore tensorboard files
+runs/
+
 # ignore test scripts
 test.py
 test.ipynb
