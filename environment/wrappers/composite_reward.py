@@ -56,6 +56,7 @@ class CompositeRewardWrapper(gym.Wrapper[Observation, Action, Observation, Actio
         composite_reward, rewards = self._reward_fn.compute(model, state, obs, action)
         total_reward = self._base_reward_weight * base_reward + composite_reward
         rewards["base"] = base_reward
+        rewards["total"] = total_reward
         info["rewards"] = rewards
 
         return obs, total_reward, terminated, truncated, info
