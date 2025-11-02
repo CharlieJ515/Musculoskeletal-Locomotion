@@ -20,7 +20,6 @@ class OsimEnv(gym.Env[Observation, Action]):
         visualize: bool = True,
         integrator_accuracy: float = 5e-5,
         stepsize: float = 0.01,
-        time_limit: int = 60,
     ):
         self.osim_model = OsimModel(
             model_path,
@@ -32,7 +31,6 @@ class OsimEnv(gym.Env[Observation, Action]):
 
         self.visualize = visualize
         self.integrator_accuracy = integrator_accuracy
-        self.time_limit = time_limit
 
         self.total_step = 0
 
@@ -62,15 +60,9 @@ class OsimEnv(gym.Env[Observation, Action]):
         obs = self._get_obs()
         reward = 0
 
+        terminated = obs.pelvis.pos.y < 0.6
+        truncated = False
         info: Dict[str, Any] = {}
-        terminated, truncated = False, False
-        if obs.pelvis.pos.y < 0.6:
-            terminated = True
-            info["terminated_reason"] = "pelvis_height_drop"
-
-        if self.osim_model.step * self.osim_model.stepsize > self.time_limit:
-            truncated = True
-            info["truncated_reason"] = "time_limit_exceeded"
 
         return obs, reward, terminated, truncated, info
 
