@@ -1,6 +1,4 @@
-from pathlib import Path
-from typing import Optional, Tuple, cast, List
-import os
+from typing import Tuple, cast
 
 import mlflow
 import matplotlib.pyplot as plt
@@ -13,7 +11,7 @@ import gymnasium as gym
 import opensim
 
 from environment.models import gait14dof22_path
-from environment.osim import OsimEnv, Action, Observation
+from environment.osim import OsimEnv
 from environment.osim.pose import osim_rl_pose
 from environment.osim.reward import (
     CompositeReward,
@@ -32,8 +30,8 @@ from rl.replay_buffer.replay_buffer import ReplayBuffer
 from rl.sac import SAC, default_target_entropy
 from utils.transition import Transition
 from utils.mlflow_utils import get_tmp, tag_attempt, clear_tmp
-
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+from analysis import writer
+from analysis.distribution import log_weight_hist, log_grad_hist
 
 
 class MLPActor(nn.Module):
@@ -56,6 +54,7 @@ class MLPActor(nn.Module):
         input_dim = self.state_dim
         for h in hidden_dims:
             layers.append(nn.Linear(input_dim, h))
+            layers.append(nn.LayerNorm(h))
             layers.append(nn.ReLU())
             input_dim = h
 
@@ -100,20 +99,22 @@ class MLPCritic(nn.Module):
         self.action_dim = int(np.prod(action_dim))
         self.reward_dim = int(np.prod(reward_dim))
 
-        hidden_dims = [1024, 1024, 512, 256, self.reward_dim]
+        hidden_dims = [1024, 1024, 512, 256]
 
         layers = []
         input_dim = self.state_dim + self.action_dim
         for h in hidden_dims:
             layers.append(nn.Linear(input_dim, h))
+            layers.append(nn.LayerNorm(h))
             layers.append(nn.ReLU())
             input_dim = h
+        layers.append(nn.Linear(input_dim, self.reward_dim, False))
 
         self.q = nn.Sequential(*layers)
 
     def forward(self, s: torch.Tensor, a: torch.Tensor):
         x = torch.cat([s.view(s.shape[0], -1), a.view(a.shape[0], -1)], dim=-1)
-        return self.q(x)  # (B,1)
+        return self.q(x)
 
 
 @torch.no_grad()
@@ -166,20 +167,48 @@ def evaluate(
             ep_disc += disc_pow * float(r)
             disc_pow *= float(gamma)
 
-            q1 = agent.Q1(s_t, a_t).detach().cpu().item()
-            q2 = agent.Q2(s_t, a_t).detach().cpu().item()
-            qmin = min(q1, q2)
+            q1 = agent.Q1(s_t, a_t).detach().cpu().squeeze(0)
+            q2 = agent.Q2(s_t, a_t).detach().cpu().squeeze(0)
+            qmin = torch.min(q1, q2)
 
-            mlflow.log_metrics(
+            writer.add_scalars(
+                f"eval/ep{ep}/critic/q1_pred",
                 {
-                    "reward": float(r),
+                    "alive": q1[0],
+                    "velocity": q1[1],
+                    "energy": q1[2],
+                    "smoothness": q1[3],
+                },
+                ep_step,
+            )
+            writer.add_scalars(
+                f"eval/ep{ep}/critic/q2_pred",
+                {
+                    "alive": q2[0],
+                    "velocity": q2[1],
+                    "energy": q2[2],
+                    "smoothness": q2[3],
+                },
+                ep_step,
+            )
+            writer.add_scalars(
+                f"eval/ep{ep}/critic/min",
+                {
+                    "alive": qmin[0],
+                    "velocity": qmin[1],
+                    "energy": qmin[2],
+                    "smoothness": qmin[3],
+                },
+                ep_step,
+            )
+            writer.add_scalars(f"eval/ep{ep}/transit/reward", info["rewards"], ep_step)
+            writer.add_scalars(
+                f"eval/ep{ep}/transit/reward",
+                {
                     "cumulative_return": float(ep_ret),
                     "discounted_return": float(ep_disc),
-                    "Q1": float(q1),
-                    "Q2": float(q2),
-                    "Qmin": float(qmin),
                 },
-                step=ep_step,
+                ep_step,
             )
 
             all_actions.append(a_np)
@@ -252,7 +281,6 @@ def random_action_gamma_dist(
 
 
 def pretrain_actor(
-    writer: SummaryWriter,
     rb: ReplayBuffer,
     actor,
     name: str = "actor",
@@ -282,23 +310,25 @@ def pretrain_actor(
             loss_sum += loss.detach().cpu().item()
 
             t = num_step * epoch + step
-            writer.add_histogram(f"pretrain/{name}/output", action.detach().cpu(), t)
-            writer.add_histogram(f"pretrain/{name}/replay_buffer", a, t)
+            # writer.add_histogram(f"pretrain/{name}/output", action.detach().cpu(), t)
+            # writer.add_histogram(f"pretrain/{name}/replay_buffer", a, t)
+
+            # log_weight_hist(f"pretrain/actor/weights", actor, t)
+            # log_grad_hist(f"pretrain/actor/grads", actor, t)
 
         epoch_loss = loss_sum / num_step
         print(f"epoch {epoch:3}, loss: {epoch_loss:.4f}")
 
-    s, a, _, _, _ = rb.all(pin_memory=True).to(device).unpack()
-    action, _ = actor(s, deterministic=True)
+    # s, a, _, _, _ = rb.all(pin_memory=True).to(device).unpack()
+    # action, _ = actor(s, deterministic=True)
 
-    writer.add_histogram(f"pretrain/{name}/total/replay_buffer", a)
-    writer.add_histogram(f"pretrain/{name}/total/output", action.detach().cpu())
+    # writer.add_histogram(f"pretrain/{name}/total/replay_buffer", a)
+    # writer.add_histogram(f"pretrain/{name}/total/output", action.detach().cpu())
 
     print("Actor pretraining complete")
 
 
 def pretrain_critic(
-    writer: SummaryWriter,
     rb: ReplayBuffer,
     critic,
     name: str = "critic",
@@ -328,17 +358,34 @@ def pretrain_critic(
             loss_sum += loss.detach().cpu().item()
 
             t = num_step * epoch + step
-            writer.add_histogram(f"pretrain/{name}/output", q_pred.detach().cpu(), t)
-            writer.add_histogram(f"pretrain/{name}/replay_buffer", r, t)
+            # writer.add_histogram(f"pretrain/{name}/output", q_pred.detach().cpu(), t)
+            # writer.add_histogram(f"pretrain/{name}/replay_buffer", r, t)
+
+            # log_weight_hist(f"pretrain/{name}/weights", critic, t)
+            # log_grad_hist(f"pretrain/{name}/grads", critic, t)
 
         epoch_loss = loss_sum / num_step
         print(f"epoch {epoch:3}, loss: {epoch_loss:.4f}")
 
-    s, a, r, _, _ = rb.all(pin_memory=True).to(device).unpack()
-    q_pred = critic(s, a).detach().cpu()
+    # s, a, r, _, _ = rb.all(pin_memory=True).to(device).unpack()
+    # q_pred = critic(s, a).detach().cpu()
 
-    writer.add_histogram(f"pretrain/{name}/replay_buffer", a)
-    writer.add_histogram(f"pretrain/{name}/output", q_pred)
+    # plt.figure(figsize=(8, 6))
+    # colors = ["r", "g", "b", "orange"]  # one color per distribution
+    # labels = [f"Q{i}" for i in range(4)]
+
+    # for i in range(4):
+    #     plt.hist(q_pred[:, i], bins=50, alpha=0.5, color=colors[i], label=labels[i])
+
+    # plt.title("Q-value Distributions")
+    # plt.xlabel("Q value")
+    # plt.ylabel("Frequency")
+    # plt.legend()
+    # plt.grid(True, linestyle="--", alpha=0.7)
+    # plt.show()
+
+    # writer.add_histogram(f"pretrain/{name}/replay_buffer", a)
+    # writer.add_histogram(f"pretrain/{name}/output", q_pred)
 
     print("Critic pretraining complete")
 
@@ -355,8 +402,6 @@ def main():
     mlflow.set_experiment(experiment_name)
     mlflow.start_run(run_name=run_name)
     tag_attempt(experiment_name, run_name)
-
-    writer = SummaryWriter()
 
     mlflow.log_params(
         {
@@ -406,7 +451,7 @@ def main():
 
     # SAC hyperparams
     agent = SAC(
-        gamma=0.99,
+        gamma=0.0,
         state_dim=obs_shape,
         action_dim=action_shape,
         reward_dim=reward_shape,
@@ -416,7 +461,7 @@ def main():
         critic_net=MLPCritic,
         lr=3e-4,
         tau=0.005,
-        target_entropy=default_target_entropy(action_shape),
+        target_entropy=-0.72,  # std ~0.25
         weight_decay=0.0,
         policy_update_freq=1,
         reward_weight=reward_weights,
@@ -486,13 +531,14 @@ def main():
     actor = agent.actor
     q1 = agent.Q1
     q2 = agent.Q2
-    pretrain_actor(writer, rb, actor, device=device)
-    pretrain_critic(writer, rb, q1, device=device, name="q1")
-    pretrain_critic(writer, rb, q2, device=device, name="q2")
+    pretrain_actor(rb, actor, device=device)
+    pretrain_critic(rb, q1, device=device, name="q1")
+    pretrain_critic(rb, q2, device=device, name="q2")
     agent._hard_update()
 
     s_np, info = env.reset(seed=seed)
     ep_return, ep_len = 0.0, 0
+    agent.train()
     print("Starting training")
     for t in range(1, total_steps + 1):
         s_t = torch.tensor(s_np, dtype=torch.float32, device=agent.device).unsqueeze(0)
@@ -562,17 +608,14 @@ def main():
         writer.add_histogram("transit/action", a_np, t)
         writer.add_scalars("transit/reward", info["rewards"], t)
 
-        for name, param in agent.actor.named_parameters():
-            writer.add_histogram(f"model/actor/weights/{name}", param.data, t)
-            writer.add_histogram(f"model/actor/grads/{name}", param.grad, t)
+        log_weight_hist(f"model/actor/weights", agent.actor, t)
+        log_grad_hist(f"model/actor/grads", agent.actor, t)
 
-        for name, param in agent.Q1.named_parameters():
-            writer.add_histogram(f"model/q1/weights/{name}", param.data, t)
-            writer.add_histogram(f"model/q1/grads/{name}", param.grad, t)
+        log_weight_hist(f"model/q1/weights", agent.Q1, t)
+        log_grad_hist(f"model/q1/grads", agent.Q1, t)
 
-        for name, param in agent.Q2.named_parameters():
-            writer.add_histogram(f"model/q2/weights/{name}", param.data, t)
-            writer.add_histogram(f"model/q2/grads/{name}", param.grad, t)
+        log_weight_hist(f"model/q2/weights", agent.Q2, t)
+        log_grad_hist(f"model/q2/grads", agent.Q2, t)
 
         # Episode reset
         if terminated or truncated:
