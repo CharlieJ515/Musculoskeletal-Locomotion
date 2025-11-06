@@ -1,4 +1,5 @@
 from typing import Tuple, cast
+from pathlib import Path
 
 import mlflow
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ import opensim
 
 from environment.models import gait14dof22_path
 from environment.osim import OsimEnv
-from environment.osim.pose import osim_rl_pose
+from environment.osim.pose import Pose, osim_rl_pose
 from environment.osim.reward import (
     CompositeReward,
     AliveReward,
@@ -28,10 +29,10 @@ from environment.wrappers import (
 )
 from rl.replay_buffer.replay_buffer import ReplayBuffer
 from rl.sac import SAC, default_target_entropy
-from utils.transition import Transition
+from utils.transition import Transition, TransitionBatch
 from utils.mlflow_utils import get_tmp, tag_attempt, clear_tmp
-from analysis import writer
-from analysis.distribution import log_weight_hist, log_grad_hist
+from analysis.writer import get_writer
+from analysis.distribution import log_weight_hist, log_grad_hist, log_rewards
 
 
 class MLPActor(nn.Module):
@@ -108,7 +109,7 @@ class MLPCritic(nn.Module):
             layers.append(nn.LayerNorm(h))
             layers.append(nn.ReLU())
             input_dim = h
-        layers.append(nn.Linear(input_dim, self.reward_dim, False))
+        layers.append(nn.Linear(input_dim, self.reward_dim))
 
         self.q = nn.Sequential(*layers)
 
@@ -119,26 +120,24 @@ class MLPCritic(nn.Module):
 
 @torch.no_grad()
 def evaluate(
-    simple_env: gym.Env,
+    model: Path,
+    pose: Pose,
     agent: SAC,
     step: int,
     episodes: int = 5,
 ):
-
+    writer = get_writer()
     active_run = mlflow.active_run()
     active_run_name = active_run.data.tags.get("mlflow.runName")  # type: ignore[reportOptionalMemberAccess]
 
-    agent.eval()
     gamma = agent.gamma
-
     tmpdir = get_tmp()
     returns = []
 
     motion_output_dir = tmpdir / f"{active_run_name}_eval_step{step}"
-    env = MotionLoggerWrapper(
-        simple_env,
-        motion_output_dir,
-    )
+    train_env = create_env(model, pose, False)
+    env = MotionLoggerWrapper(train_env, motion_output_dir)
+    agent.eval()
     for ep in range(episodes):
         run_name = f"{active_run_name}_eval_step{step}_{ep}"
         eval_dir = tmpdir / run_name
@@ -390,14 +389,60 @@ def pretrain_critic(
     print("Critic pretraining complete")
 
 
+def create_env(model: Path, pose: Pose, add_sticky: bool) -> gym.Env:
+    osim_env = OsimEnv(model, pose, visualize=True)
+    time_limit_env = gym.wrappers.TimeLimit(osim_env, 500)
+    target_env = TargetSpeedWrapper(time_limit_env)
+    reward_components = {
+        "alive_reward": AliveReward(0.1),
+        "velocity_reward": VelocityReward(0.33),
+        "energy_reward": EnergyReward(3.0),
+        "smoothness_reward": SmoothnessReward(2.0),
+    }
+    reward_weights = {
+        "alive_reward": 1.0,
+        "velocity_reward": 1.0,
+        "energy_reward": 1.0,
+        "smoothness_reward": 1.0,
+    }
+    reward_fn = CompositeReward(reward_components, reward_weights)
+    reward_env = CompositeRewardWrapper(target_env, reward_fn)
+    simple_env = SimpleEnvWrapper(reward_env)
+    time_aware_env = gym.wrappers.TimeAwareObservation(
+        simple_env, flatten=True, normalize_time=True
+    )
+    rescale_env = gym.wrappers.RescaleAction(
+        time_aware_env, np.float32(-1.0), np.float32(1.0)
+    )
+    if not add_sticky:
+        return rescale_env
+
+    sticky_env = gym.wrappers.StickyAction(rescale_env, repeat_action_probability=0.9)
+    return sticky_env
+
+
+def reward_info_to_ndarray(reward_info: dict[str, np.ndarray]) -> np.ndarray:
+    reward = np.array(
+        [
+            reward_info["alive_reward"],
+            reward_info["velocity_reward"],
+            reward_info["energy_reward"],
+            reward_info["smoothness_reward"],
+        ],
+        dtype=np.float32,
+    ).T
+    return reward
+
+
 def main():
     seed = 42
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    experiment_name = "SAC-Osim"
+    experiment_name = "SAC-Osim3"
     run_name = "simple sac"
     model = gait14dof22_path
     pose = osim_rl_pose
 
+    writer = get_writer()
     mlflow.set_tracking_uri("https://mlflow.kyusang-jang.com/capstone")
     mlflow.set_experiment(experiment_name)
     mlflow.start_run(run_name=run_name)
@@ -417,30 +462,16 @@ def main():
 
     torch.manual_seed(seed)
     np.random.seed(seed)
-    osim_env = OsimEnv(model, pose, visualize=True)
-    target_env = TargetSpeedWrapper(osim_env)
-    reward_components = {
-        "alive_reward": AliveReward(0.1),
-        "velocity_reward": VelocityReward(0.33),
-        "energy_reward": EnergyReward(3.0),
-        "smoothness_reward": SmoothnessReward(2.0),
-    }
-    reward_weights = {
-        "alive_reward": 1.0,
-        "velocity_reward": 1.0,
-        "energy_reward": 1.0,
-        "smoothness_reward": 1.0,
-    }
-    reward_fn = CompositeReward(reward_components, reward_weights)
-    reward_env = CompositeRewardWrapper(target_env, reward_fn)
-    simple_env = SimpleEnvWrapper(reward_env)
-    env = gym.wrappers.RescaleAction(simple_env, np.float32(-1.0), np.float32(1.0))
 
-    obs_shape = cast(Tuple[int, ...], env.observation_space.shape)
-    action_shape = cast(Tuple[int, ...], env.action_space.shape)
-    reward_shape = (len(reward_components),)
+    env = gym.vector.AsyncVectorEnv(
+        [lambda: create_env(model, pose, True) for _ in range(2)],
+        autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
+    )
+
+    obs_shape = cast(Tuple[int, ...], env.single_observation_space.shape)
+    action_shape = cast(Tuple[int, ...], env.single_action_space.shape)
+    reward_shape = (4,)
     reward_weights = torch.tensor([1.0, 1.0, 1.0, 1.0], dtype=torch.float32)
-
     mlflow.log_params(
         {
             "obs_shape": obs_shape,
@@ -451,7 +482,7 @@ def main():
 
     # SAC hyperparams
     agent = SAC(
-        gamma=0.0,
+        gamma=0.9,
         state_dim=obs_shape,
         action_dim=action_shape,
         reward_dim=reward_shape,
@@ -461,7 +492,7 @@ def main():
         critic_net=MLPCritic,
         lr=3e-4,
         tau=0.005,
-        target_entropy=-0.72,  # std ~0.25
+        target_entropy=-22,  # std ~0.25
         weight_decay=0.0,
         policy_update_freq=1,
         reward_weight=reward_weights,
@@ -473,7 +504,7 @@ def main():
 
     # Replay buffer
     rb = ReplayBuffer(
-        capacity=200_000,
+        capacity=5_000,
         obs_shape=obs_shape,
         action_shape=action_shape,
         reward_shape=reward_shape,
@@ -483,6 +514,7 @@ def main():
 
     # Training loop
     total_steps = 25_000
+    # total_steps = 1_000
     start_random = 1_000
     batch_size = 256
     eval_interval = 5_000
@@ -495,7 +527,8 @@ def main():
         }
     )
 
-    s_np, info = env.reset(seed=seed)
+    s_np, infos = env.reset(seed=seed)
+    episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
     for t in range(1, start_random):
         a_np = random_action_gamma_dist(
@@ -503,29 +536,27 @@ def main():
         )
         s_next_np, r, terminated, truncated, info = env.step(a_np)
 
+        if episode_start.all():
+            s_np = s_next_np
+            episode_start = np.logical_or(terminated, truncated)
+            continue
+
         reward_info = info["rewards"]
-        reward = [
-            reward_info["alive_reward"],
-            reward_info["velocity_reward"],
-            reward_info["energy_reward"],
-            reward_info["smoothness_reward"],
-        ]
+        reward = reward_info_to_ndarray(reward_info)
 
         # Store transition
-        tr = Transition(
-            obs=torch.as_tensor(s_np, dtype=torch.float32),
-            action=torch.as_tensor(a_np, dtype=torch.float32),
-            reward=torch.as_tensor(reward, dtype=torch.float32),
-            next_obs=torch.as_tensor(s_next_np, dtype=torch.float32),
-            done=torch.as_tensor(terminated, dtype=torch.bool),
+        idx = ~episode_start
+        tr = TransitionBatch(
+            obs=torch.as_tensor(s_np[idx], dtype=torch.float32),
+            actions=torch.as_tensor(a_np[idx], dtype=torch.float32),
+            rewards=torch.as_tensor(reward[idx], dtype=torch.float32),
+            next_obs=torch.as_tensor(s_next_np[idx], dtype=torch.float32),
+            dones=torch.as_tensor(terminated[idx], dtype=torch.bool),
         )
         rb.add(tr)
 
         s_np = s_next_np
-
-        # Episode reset
-        if terminated or truncated:
-            s_np, info = env.reset()
+        episode_start = np.logical_or(terminated, truncated)
 
     agent.train()
     actor = agent.actor
@@ -536,44 +567,43 @@ def main():
     pretrain_critic(rb, q2, device=device, name="q2")
     agent._hard_update()
 
-    s_np, info = env.reset(seed=seed)
-    ep_return, ep_len = 0.0, 0
     agent.train()
+    s_np, info = env.reset(seed=seed)
+    episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting training")
     for t in range(1, total_steps + 1):
-        s_t = torch.tensor(s_np, dtype=torch.float32, device=agent.device).unsqueeze(0)
+        s_t = torch.as_tensor(s_np, dtype=torch.float32, device=agent.device)
         a_t = agent.select_action(s_t)
-        a_np = a_t.squeeze(0).cpu().numpy()
+        a_np = a_t.cpu().numpy()
 
-        s_next_np, r, terminated, truncated, info = env.step(a_np)
+        env.step_async(a_np)
 
-        ep_return += float(r)
-        ep_len += 1
-        mlflow.log_metrics(info["rewards"], step=t)
-        mlflow.log_metrics(info["target"], step=t)
+        batch = rb.sample(batch_size, pin_memory=True).to(device, non_blocking=True)
+        metrics = agent.update(batch)
+
+        s_next_np, r, terminated, truncated, info = env.step_wait()
+
+        if episode_start.all():
+            s_np = s_next_np
+            episode_start = np.logical_or(terminated, truncated)
+            continue
 
         reward_info = info["rewards"]
-        reward = [
-            reward_info["alive_reward"],
-            reward_info["velocity_reward"],
-            reward_info["energy_reward"],
-            reward_info["smoothness_reward"],
-        ]
+        reward = reward_info_to_ndarray(reward_info)
 
         # Store transition
-        tr = Transition(
-            obs=torch.as_tensor(s_np, dtype=torch.float32),
-            action=torch.as_tensor(a_np, dtype=torch.float32),
-            reward=torch.as_tensor(reward, dtype=torch.float32),
-            next_obs=torch.as_tensor(s_next_np, dtype=torch.float32),
-            done=torch.as_tensor(terminated, dtype=torch.bool),
+        idx = ~episode_start
+        tr = TransitionBatch(
+            obs=torch.as_tensor(s_np[idx], dtype=torch.float32),
+            actions=torch.as_tensor(a_np[idx], dtype=torch.float32),
+            rewards=torch.as_tensor(reward[idx], dtype=torch.float32),
+            next_obs=torch.as_tensor(s_next_np[idx], dtype=torch.float32),
+            dones=torch.as_tensor(terminated[idx], dtype=torch.bool),
         )
         rb.add(tr)
 
         s_np = s_next_np
-
-        batch = rb.sample(batch_size, pin_memory=True).to(device, non_blocking=True)
-        metrics = agent.update(batch)
+        episode_start = np.logical_or(terminated, truncated)
 
         alpha_metrics = metrics["alpha"]
         critic_metrics = metrics["critic"]
@@ -582,60 +612,57 @@ def main():
         writer.add_scalars("train/alpha", alpha_metrics, t)
         writer.add_scalar("train/critic/critic_loss", critic_metrics["critic_loss"], t)
         writer.add_scalar("train/actor/actor_loss", actor_metrics["actor_loss"], t)
+        log_rewards(reward_info, idx, t, "transit/reward")
 
-        q1_pred = critic_metrics["q1_pred"]
-        writer.add_histogram("train/critic/q1_pred/alive", q1_pred[:, 0], t)
-        writer.add_histogram("train/critic/q1_pred/velocity", q1_pred[:, 1], t)
-        writer.add_histogram("train/critic/q1_pred/energy", q1_pred[:, 2], t)
-        writer.add_histogram("train/critic/q1_pred/smoothness", q1_pred[:, 3], t)
+        if t % 20 == 0:
+            q1_pred = critic_metrics["q1_pred"]
+            writer.add_histogram("train/critic/q1_pred/alive", q1_pred[:, 0], t)
+            writer.add_histogram("train/critic/q1_pred/velocity", q1_pred[:, 1], t)
+            writer.add_histogram("train/critic/q1_pred/energy", q1_pred[:, 2], t)
+            writer.add_histogram("train/critic/q1_pred/smoothness", q1_pred[:, 3], t)
 
-        q2_pred = critic_metrics["q2_pred"]
-        writer.add_histogram("train/critic/q2_pred/alive", q2_pred[:, 0], t)
-        writer.add_histogram("train/critic/q2_pred/velocity", q2_pred[:, 1], t)
-        writer.add_histogram("train/critic/q2_pred/energy", q2_pred[:, 2], t)
-        writer.add_histogram("train/critic/q2_pred/smoothness", q2_pred[:, 3], t)
+            q2_pred = critic_metrics["q2_pred"]
+            writer.add_histogram("train/critic/q2_pred/alive", q2_pred[:, 0], t)
+            writer.add_histogram("train/critic/q2_pred/velocity", q2_pred[:, 1], t)
+            writer.add_histogram("train/critic/q2_pred/energy", q2_pred[:, 2], t)
+            writer.add_histogram("train/critic/q2_pred/smoothness", q2_pred[:, 3], t)
 
-        q_target = critic_metrics["q_target"]
-        writer.add_histogram("train/critic/q_target/alive", q_target[:, 0], t)
-        writer.add_histogram("train/critic/q_target/velocity", q_target[:, 1], t)
-        writer.add_histogram("train/critic/q_target/energy", q_target[:, 2], t)
-        writer.add_histogram("train/critic/q_target/smoothness", q_target[:, 3], t)
+            q_target = critic_metrics["q_target"]
+            writer.add_histogram("train/critic/q_target/alive", q_target[:, 0], t)
+            writer.add_histogram("train/critic/q_target/velocity", q_target[:, 1], t)
+            writer.add_histogram("train/critic/q_target/energy", q_target[:, 2], t)
+            writer.add_histogram("train/critic/q_target/smoothness", q_target[:, 3], t)
 
-        writer.add_histogram("train/actor/log_prob", actor_metrics["log_prob"], t)
-        writer.add_histogram("train/actor/q", actor_metrics["q"], t)
+            writer.add_histogram("train/actor/log_prob", actor_metrics["log_prob"], t)
+            writer.add_histogram("train/actor/q", actor_metrics["q"], t)
 
-        writer.add_histogram("transit/obs", s_np, t)
-        writer.add_histogram("transit/action", a_np, t)
-        writer.add_scalars("transit/reward", info["rewards"], t)
+        # writer.add_scalars("transit/reward", infos[0]["rewards"], t)
 
-        log_weight_hist(f"model/actor/weights", agent.actor, t)
-        log_grad_hist(f"model/actor/grads", agent.actor, t)
+        # ---
 
-        log_weight_hist(f"model/q1/weights", agent.Q1, t)
-        log_grad_hist(f"model/q1/grads", agent.Q1, t)
+        # writer.add_histogram("transit/obs", s_np, t)
+        # writer.add_histogram("transit/action", a_np, t)
 
-        log_weight_hist(f"model/q2/weights", agent.Q2, t)
-        log_grad_hist(f"model/q2/grads", agent.Q2, t)
+        # log_weight_hist(f"model/actor/weights", agent.actor, t)
+        # log_grad_hist(f"model/actor/grads", agent.actor, t)
 
-        # Episode reset
-        if terminated or truncated:
-            print(
-                f"Episode finished at step {t:6d} | length={ep_len} | return={ep_return:.2f}"
-            )
-            s_np, info = env.reset()
-            ep_return, ep_len = 0.0, 0
+        # log_weight_hist(f"model/q1/weights", agent.Q1, t)
+        # log_grad_hist(f"model/q1/grads", agent.Q1, t)
+
+        # log_weight_hist(f"model/q2/weights", agent.Q2, t)
+        # log_grad_hist(f"model/q2/grads", agent.Q2, t)
 
         # Periodic eval
         if t % eval_interval == 0:
             save_ckpt(agent, f"sac_osim_step{t}.pt")
 
             agent.eval()
-            avg_ret = evaluate(env, agent, t, episodes=5)
+            avg_ret = evaluate(model, pose, agent, t, episodes=5)
             print(f"[{t:6d}] eval_return={avg_ret:.2f}  alpha={agent.get_alpha():.4f}")
             agent.train()
 
     # Final eval
-    final_ret = evaluate(env, agent, -1, episodes=10)
+    final_ret = evaluate(model, pose, agent, -1, episodes=10)
     print(f"Final average return over 10 episodes: {final_ret:.2f}")
 
     # Save checkpoint
