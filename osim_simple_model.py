@@ -135,7 +135,7 @@ def evaluate(
     returns = []
 
     motion_output_dir = tmpdir / f"{active_run_name}_eval_step{step}"
-    train_env = create_env(model, pose, False)
+    train_env = create_env(model, pose)
     env = MotionLoggerWrapper(train_env, motion_output_dir)
     agent.eval()
     for ep in range(episodes):
@@ -389,7 +389,7 @@ def pretrain_critic(
     print("Critic pretraining complete")
 
 
-def create_env(model: Path, pose: Pose, add_sticky: bool) -> gym.Env:
+def create_env(model: Path, pose: Pose) -> gym.Env:
     osim_env = OsimEnv(model, pose, visualize=True)
     time_limit_env = gym.wrappers.TimeLimit(osim_env, 500)
     target_env = TargetSpeedWrapper(time_limit_env)
@@ -414,11 +414,7 @@ def create_env(model: Path, pose: Pose, add_sticky: bool) -> gym.Env:
     rescale_env = gym.wrappers.RescaleAction(
         time_aware_env, np.float32(-1.0), np.float32(1.0)
     )
-    if not add_sticky:
-        return rescale_env
-
-    sticky_env = gym.wrappers.StickyAction(rescale_env, repeat_action_probability=0.9)
-    return sticky_env
+    return rescale_env
 
 
 def reward_info_to_ndarray(reward_info: dict[str, np.ndarray]) -> np.ndarray:
@@ -464,7 +460,7 @@ def main():
     np.random.seed(seed)
 
     env = gym.vector.AsyncVectorEnv(
-        [lambda: create_env(model, pose, True) for _ in range(2)],
+        [lambda: create_env(model, pose) for _ in range(2)],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
     )
 
