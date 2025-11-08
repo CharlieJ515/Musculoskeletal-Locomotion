@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Tuple, TypeVar
+from typing import Any, Dict, Tuple
 
 import opensim
 import gymnasium as gym
@@ -7,7 +7,6 @@ import gymnasium as gym
 from .osim_model import OsimModel
 from .observation import Observation
 from .action import Action
-from .reward import CompositeReward
 from .pose import Pose
 
 
