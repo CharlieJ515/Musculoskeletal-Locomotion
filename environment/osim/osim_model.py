@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 import warnings
+import psutil
 import os
 
 # to prevent openmp error when loading opensim window
@@ -37,9 +38,8 @@ class OsimModel:
 
         # Enable the visualizer
         self.visualize = visualize
-        self._model.setUseVisualizer(self.visualize)
-
-        self._init_state = self._model.initSystem()
+        self.visualizer: Optional[psutil.Process] = None
+        self.initSystem()
 
         self.integrator_accuracy = integrator_accuracy
         self.stepsize = stepsize
@@ -178,3 +178,36 @@ class OsimModel:
         markerSet = self._model.getMarkerSet()
         for i in range(markerSet.getSize()):
             print(i, markerSet.get(i).getName())
+
+    def initSystem(self):
+        if self.visualize:
+            self._start_visualizer()
+        else:
+            self._init_state = self._model.initSystem()
+
+    def _start_visualizer(self):
+        current = psutil.Process()
+        before = {p.pid for p in current.children(recursive=False)}
+
+        self._model.setUseVisualizer(self.visualize)
+        self._init_state = self._model.initSystem()
+
+        after = {p.pid for p in current.children(recursive=False)}
+        new_pids = after - before
+        if len(new_pids) != 1:
+            raise RuntimeError(
+                f"Expected 1 new process to be added, got {len(new_pids)}"
+            )
+
+        visualizer_pid = new_pids.pop()
+        self._visualizer = psutil.Process(visualizer_pid)
+
+    def close(self):
+        if self._visualizer is None:
+            return
+
+        try:
+            if self._visualizer.is_running():
+                self._visualizer.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass

@@ -244,6 +244,7 @@ def evaluate(
         returns.append(ep_ret)
         mlflow.end_run()
 
+    env.close()
     agent.train(True)
     return float(np.mean(returns))
 
@@ -433,7 +434,7 @@ def reward_info_to_ndarray(reward_info: dict[str, np.ndarray]) -> np.ndarray:
 def main():
     seed = 42
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    experiment_name = "SAC-Osim3"
+    experiment_name = "SAC-Osim4"
     run_name = "simple sac"
     model = gait14dof22_path
     pose = osim_rl_pose
@@ -491,7 +492,8 @@ def main():
         critic_net=MLPCritic,
         lr=3e-4,
         tau=0.005,
-        target_entropy=-22,  # std ~0.25
+        # target_entropy=-22,  # std 1
+        target_entropy=-30,  # std ~0.25
         weight_decay=0.0,
         policy_update_freq=1,
         reward_weight=reward_weights,
@@ -503,7 +505,7 @@ def main():
 
     # Replay buffer
     rb = ReplayBuffer(
-        capacity=5_000,
+        capacity=10_000,
         obs_shape=obs_shape,
         action_shape=action_shape,
         reward_shape=reward_shape,
@@ -512,11 +514,11 @@ def main():
     rb.log_params(prefix="buffer/")
 
     # Training loop
-    total_steps = 25_000
+    total_steps = 100_000
     # total_steps = 1_000
     start_random = 1_000
     batch_size = 256
-    eval_interval = 5_000
+    eval_interval = 10_000
     mlflow.log_params(
         {
             "total_steps": total_steps,
@@ -666,6 +668,8 @@ def main():
 
     # Save checkpoint
     save_ckpt(agent, "sac_osim.pt")
+
+    env.close()
 
 
 if __name__ == "__main__":

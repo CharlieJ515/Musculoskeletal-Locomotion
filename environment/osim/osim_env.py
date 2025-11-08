@@ -70,6 +70,9 @@ class OsimEnv(gym.Env[Observation, Action]):
             "Render method is not supported for this environment."
         )
 
+    def close(self):
+        self.osim_model.close()
+
     @property
     def model(self) -> opensim.Model:
         return self.osim_model.model
