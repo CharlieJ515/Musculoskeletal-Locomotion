@@ -437,6 +437,9 @@ def main():
     run_name = "simple sac"
     model = gait14dof22_path
     pose = osim_rl_pose
+    pose.set("pelvis_tilt", q=-15 / 360 * np.pi)
+    pose.set("hip_flexion_r", q=15 / 360 * np.pi)
+    pose.set("hip_flexion_l", q=15 / 360 * np.pi)
 
     writer = get_writer()
     mlflow.set_tracking_uri("https://mlflow.kyusang-jang.com/capstone")
