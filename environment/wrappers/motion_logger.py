@@ -135,3 +135,5 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
             warnings.warn(
                 f"MotionLoggerWrapper: unflushed data written to {path}", RuntimeWarning
             )
+
+        return self.env.close()
