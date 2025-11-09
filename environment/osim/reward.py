@@ -124,9 +124,9 @@ class HeadStabilityReward(RewardComponent):
         acc_scale: float = 1.0,
         ang_vel_scale: float = 1.0,
     ):
+        self.head_marker_name = head_marker_name
         self.acc_scale = acc_scale
         self.ang_vel_scale = ang_vel_scale
-        self.head_marker_name = head_marker_name
 
     def compute(
         self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
