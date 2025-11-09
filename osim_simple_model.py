@@ -20,6 +20,7 @@ from environment.osim.reward import (
     VelocityReward,
     EnergyReward,
     SmoothnessReward,
+    HeadStabilityReward,
 )
 from environment.wrappers import (
     TargetSpeedWrapper,
@@ -399,12 +400,14 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
         "velocity_reward": VelocityReward(0.33),
         "energy_reward": EnergyReward(3.0),
         "smoothness_reward": SmoothnessReward(2.0),
+        "head_stability_reward": HeadStabilityReward(acc_scale=0.01),
     }
     reward_weights = {
         "alive_reward": 1.0,
-        "velocity_reward": 1.0,
+        "velocity_reward": 3.0,
         "energy_reward": 1.0,
         "smoothness_reward": 1.0,
+        "head_stability_reward": 1.0,
     }
     reward_fn = CompositeReward(reward_components, reward_weights)
     reward_env = CompositeRewardWrapper(target_env, reward_fn)
@@ -425,6 +428,7 @@ def reward_info_to_ndarray(reward_info: dict[str, np.ndarray]) -> np.ndarray:
             reward_info["velocity_reward"],
             reward_info["energy_reward"],
             reward_info["smoothness_reward"],
+            reward_info["head_stability_reward"],
         ],
         dtype=np.float32,
     ).T
@@ -470,8 +474,8 @@ def main():
 
     obs_shape = cast(Tuple[int, ...], env.single_observation_space.shape)
     action_shape = cast(Tuple[int, ...], env.single_action_space.shape)
-    reward_shape = (4,)
-    reward_weights = torch.tensor([1.0, 1.0, 1.0, 1.0], dtype=torch.float32)
+    reward_shape = (5,)
+    reward_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0], dtype=torch.float32)
     mlflow.log_params(
         {
             "obs_shape": obs_shape,
@@ -493,7 +497,7 @@ def main():
         lr=3e-4,
         tau=0.005,
         # target_entropy=-22,  # std 1
-        target_entropy=-30,  # std ~0.25
+        target_entropy=-22,  # std ~0.5
         weight_decay=0.0,
         policy_update_freq=1,
         reward_weight=reward_weights,
@@ -636,10 +640,6 @@ def main():
 
             writer.add_histogram("train/actor/log_prob", actor_metrics["log_prob"], t)
             writer.add_histogram("train/actor/q", actor_metrics["q"], t)
-
-        # writer.add_scalars("transit/reward", infos[0]["rewards"], t)
-
-        # ---
 
         # writer.add_histogram("transit/obs", s_np, t)
         # writer.add_histogram("transit/action", a_np, t)
