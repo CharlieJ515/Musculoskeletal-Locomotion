@@ -256,3 +256,49 @@ class CompositeReward:
             total += w * reward
             rewards[name] = reward
         return float(total), rewards
+
+
+class FootstepReward(RewardComponent):
+    def __init__(self, scale: float = 1.0, stepsize: float = 0.01):
+        self.scale = scale
+        self.stepsize = stepsize
+
+        self._r_contact_prev = False
+        self._l_contact_prev = False
+        self._del_t = 0.0
+
+    def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
+        mass = obs.norm_spec.mass  # type: ignore
+        g = obs.norm_spec.g  # type: ignore
+        self.threshold = -0.05 * (mass * g)
+
+        r_contact, l_contact = self._get_contacts(obs)
+        self._r_contact_prev = r_contact
+        self._l_contact_prev = l_contact
+        self._del_t = 0.0
+
+    def compute(
+        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+    ) -> float:
+        self._del_t += self.stepsize
+
+        r_contact, l_contact = self._get_contacts(obs)
+        new_step = (not self._r_contact_prev and r_contact) or (
+            not self._l_contact_prev and l_contact
+        )
+        self._r_contact_prev, self._l_contact_prev = r_contact, l_contact
+
+        if not new_step:
+            return 0.0
+
+        reward = self.scale * self._del_t
+        self._del_t = 0.0
+        return reward
+
+    def _get_contacts(self, obs: Observation):
+        r_force = obs.foot["foot_r"].ground.force.y
+        l_force = obs.foot["foot_l"].ground.force.y
+
+        r_contact = r_force < self.threshold
+        l_contact = l_force < self.threshold
+        return r_contact, l_contact
