@@ -1,5 +1,6 @@
 from typing import Tuple, cast
 from pathlib import Path
+import math
 
 import mlflow
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ import opensim
 
 from environment.models import gait14dof22_path
 from environment.osim import OsimEnv
-from environment.osim.pose import Pose, osim_rl_pose
+from environment.osim.pose import Pose, get_bent_pose
 from environment.osim.reward import (
     CompositeReward,
     AliveReward,
@@ -21,6 +22,7 @@ from environment.osim.reward import (
     EnergyReward,
     SmoothnessReward,
     HeadStabilityReward,
+    FootstepReward,
 )
 from environment.wrappers import (
     TargetSpeedWrapper,
@@ -33,7 +35,7 @@ from rl.sac import SAC, default_target_entropy
 from utils.transition import Transition, TransitionBatch
 from utils.mlflow_utils import get_tmp, tag_attempt, clear_tmp
 from analysis.writer import get_writer
-from analysis.distribution import log_weight_hist, log_grad_hist, log_rewards
+from analysis.distribution import log_weight_hist, log_grad_hist, log_rewards, log_preds
 
 
 class MLPActor(nn.Module):
@@ -318,7 +320,7 @@ def pretrain_actor(
             # log_grad_hist(f"pretrain/actor/grads", actor, t)
 
         epoch_loss = loss_sum / num_step
-        print(f"epoch {epoch:3}, loss: {epoch_loss:.4f}")
+        # print(f"epoch {epoch:3}, loss: {epoch_loss:.4f}")
 
     # s, a, _, _, _ = rb.all(pin_memory=True).to(device).unpack()
     # action, _ = actor(s, deterministic=True)
@@ -366,7 +368,7 @@ def pretrain_critic(
             # log_grad_hist(f"pretrain/{name}/grads", critic, t)
 
         epoch_loss = loss_sum / num_step
-        print(f"epoch {epoch:3}, loss: {epoch_loss:.4f}")
+        # print(f"epoch {epoch:3}, loss: {epoch_loss:.4f}")
 
     # s, a, r, _, _ = rb.all(pin_memory=True).to(device).unpack()
     # q_pred = critic(s, a).detach().cpu()
@@ -397,17 +399,19 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
     target_env = TargetSpeedWrapper(time_limit_env)
     reward_components = {
         "alive_reward": AliveReward(0.1),
-        "velocity_reward": VelocityReward(0.33),
+        "velocity_reward": VelocityReward(1.0),
         "energy_reward": EnergyReward(3.0),
-        "smoothness_reward": SmoothnessReward(2.0),
+        "smoothness_reward": SmoothnessReward(6.0),
         "head_stability_reward": HeadStabilityReward(acc_scale=0.01),
+        "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
     }
     reward_weights = {
         "alive_reward": 1.0,
-        "velocity_reward": 3.0,
+        "velocity_reward": 1.0,
         "energy_reward": 1.0,
         "smoothness_reward": 1.0,
         "head_stability_reward": 1.0,
+        "footstep_reward": 1.0,
     }
     reward_fn = CompositeReward(reward_components, reward_weights)
     reward_env = CompositeRewardWrapper(target_env, reward_fn)
@@ -421,15 +425,11 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
     return rescale_env
 
 
-def reward_info_to_ndarray(reward_info: dict[str, np.ndarray]) -> np.ndarray:
+def reward_info_to_ndarray(
+    reward_key: list[str], reward_info: dict[str, np.ndarray]
+) -> np.ndarray:
     reward = np.array(
-        [
-            reward_info["alive_reward"],
-            reward_info["velocity_reward"],
-            reward_info["energy_reward"],
-            reward_info["smoothness_reward"],
-            reward_info["head_stability_reward"],
-        ],
+        [reward_info[key] for key in reward_key],
         dtype=np.float32,
     ).T
     return reward
@@ -441,10 +441,7 @@ def main():
     experiment_name = "SAC-Osim4"
     run_name = "simple sac"
     model = gait14dof22_path
-    pose = osim_rl_pose
-    pose.set("pelvis_tilt", q=-15 / 360 * np.pi)
-    pose.set("hip_flexion_r", q=15 / 360 * np.pi)
-    pose.set("hip_flexion_l", q=15 / 360 * np.pi)
+    pose = get_bent_pose()
 
     writer = get_writer()
     mlflow.set_tracking_uri("https://mlflow.kyusang-jang.com/capstone")
@@ -467,6 +464,14 @@ def main():
     torch.manual_seed(seed)
     np.random.seed(seed)
 
+    reward_key = [
+        "alive_reward",
+        "velocity_reward",
+        "energy_reward",
+        "smoothness_reward",
+        "head_stability_reward",
+        "footstep_reward",
+    ]
     env = gym.vector.AsyncVectorEnv(
         [lambda: create_env(model, pose) for _ in range(2)],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
@@ -474,8 +479,8 @@ def main():
 
     obs_shape = cast(Tuple[int, ...], env.single_observation_space.shape)
     action_shape = cast(Tuple[int, ...], env.single_action_space.shape)
-    reward_shape = (5,)
-    reward_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0], dtype=torch.float32)
+    reward_shape = (len(reward_key),)
+    reward_weights = torch.ones(len(reward_key), dtype=torch.float32)
     mlflow.log_params(
         {
             "obs_shape": obs_shape,
@@ -497,7 +502,8 @@ def main():
         lr=3e-4,
         tau=0.005,
         # target_entropy=-22,  # std 1
-        target_entropy=-22,  # std ~0.5
+        target_entropy=-16,  # std ~0.5
+        # target_entropy=-4.7,  # std ~0.3
         weight_decay=0.0,
         policy_update_freq=1,
         reward_weight=reward_weights,
@@ -547,7 +553,7 @@ def main():
             continue
 
         reward_info = info["rewards"]
-        reward = reward_info_to_ndarray(reward_info)
+        reward = reward_info_to_ndarray(reward_key, reward_info)
 
         # Store transition
         idx = ~episode_start
@@ -563,14 +569,14 @@ def main():
         s_np = s_next_np
         episode_start = np.logical_or(terminated, truncated)
 
-    agent.train()
-    actor = agent.actor
-    q1 = agent.Q1
-    q2 = agent.Q2
-    pretrain_actor(rb, actor, device=device)
-    pretrain_critic(rb, q1, device=device, name="q1")
-    pretrain_critic(rb, q2, device=device, name="q2")
-    agent._hard_update()
+    # agent.train()
+    # actor = agent.actor
+    # q1 = agent.Q1
+    # q2 = agent.Q2
+    # pretrain_actor(rb, actor, device=device)
+    # pretrain_critic(rb, q1, device=device, name="q1")
+    # pretrain_critic(rb, q2, device=device, name="q2")
+    # agent._hard_update()
 
     agent.train()
     s_np, info = env.reset(seed=seed)
@@ -594,7 +600,7 @@ def main():
             continue
 
         reward_info = info["rewards"]
-        reward = reward_info_to_ndarray(reward_info)
+        reward = reward_info_to_ndarray(reward_key, reward_info)
 
         # Store transition
         idx = ~episode_start
@@ -621,22 +627,11 @@ def main():
 
         if t % 20 == 0:
             q1_pred = critic_metrics["q1_pred"]
-            writer.add_histogram("train/critic/q1_pred/alive", q1_pred[:, 0], t)
-            writer.add_histogram("train/critic/q1_pred/velocity", q1_pred[:, 1], t)
-            writer.add_histogram("train/critic/q1_pred/energy", q1_pred[:, 2], t)
-            writer.add_histogram("train/critic/q1_pred/smoothness", q1_pred[:, 3], t)
-
+            log_preds(reward_key, q1_pred, t, "train/critic/q1_pred")
             q2_pred = critic_metrics["q2_pred"]
-            writer.add_histogram("train/critic/q2_pred/alive", q2_pred[:, 0], t)
-            writer.add_histogram("train/critic/q2_pred/velocity", q2_pred[:, 1], t)
-            writer.add_histogram("train/critic/q2_pred/energy", q2_pred[:, 2], t)
-            writer.add_histogram("train/critic/q2_pred/smoothness", q2_pred[:, 3], t)
-
+            log_preds(reward_key, q2_pred, t, "train/critic/q2_pred")
             q_target = critic_metrics["q_target"]
-            writer.add_histogram("train/critic/q_target/alive", q_target[:, 0], t)
-            writer.add_histogram("train/critic/q_target/velocity", q_target[:, 1], t)
-            writer.add_histogram("train/critic/q_target/energy", q_target[:, 2], t)
-            writer.add_histogram("train/critic/q_target/smoothness", q_target[:, 3], t)
+            log_preds(reward_key, q_target, t, "train/critic/q_target")
 
             writer.add_histogram("train/actor/log_prob", actor_metrics["log_prob"], t)
             writer.add_histogram("train/actor/q", actor_metrics["q"], t)
