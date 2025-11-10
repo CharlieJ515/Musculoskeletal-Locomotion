@@ -1,12 +1,12 @@
 from __future__ import annotations
-
 import warnings
-from typing import Tuple, Union
+from typing import Union
+
 import torch
 import mlflow
 
 from rl.replay_buffer.base import BaseReplayBuffer
-from utils.transition import Transition, TransitionBatch
+from rl.transition import Transition, TransitionBatch
 
 
 class ReplayBuffer(BaseReplayBuffer):
@@ -17,9 +17,9 @@ class ReplayBuffer(BaseReplayBuffer):
     def __init__(
         self,
         capacity: int,
-        obs_shape: Tuple[int, ...],
-        action_shape: Tuple[int, ...],
-        reward_shape: Tuple[int, ...] = (1,),  # scalar reward => (1,)
+        obs_shape: tuple[int, ...],
+        action_shape: tuple[int, ...],
+        reward_shape: tuple[int, ...] = (1,),  # scalar reward => (1,)
         *,
         device: torch.device = torch.device("cpu"),
         obs_dtype: torch.dtype = torch.float32,

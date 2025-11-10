@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing import Tuple
 import torch
 
 
 @dataclass
-class Transition():
+class Transition:
     """
     A single transition stored in the replay buffer.
 
@@ -19,6 +18,7 @@ class Transition():
     :param done: Whether the episode terminated after this step. Shape: ()
     :type done: torch.Tensor
     """
+
     obs: torch.Tensor
     action: torch.Tensor
     reward: torch.Tensor
@@ -46,9 +46,13 @@ class Transition():
                 f"must match 'obs' shape {tuple(self.obs.shape)}"
             )
         if self.reward.dim() < 1:
-            raise ValueError(f"'reward' must be at least 1-D (e.g., shape (1,)), got {tuple(self.reward.shape)}")
+            raise ValueError(
+                f"'reward' must be at least 1-D (e.g., shape (1,)), got {tuple(self.reward.shape)}"
+            )
         if self.done.dim() != 0:
-            raise ValueError(f"'done' must be a scalar tensor with shape (), got {tuple(self.done.shape)}")
+            raise ValueError(
+                f"'done' must be a scalar tensor with shape (), got {tuple(self.done.shape)}"
+            )
 
     @property
     def device(self) -> torch.device:
@@ -102,7 +106,7 @@ class Transition():
             done=self.done.to(device, non_blocking=non_blocking),
         )
         return new
-            
+
     def to_batch(self) -> "TransitionBatch":
         """
         Convert this single transition into a TransitionBatch of size 1.
@@ -128,7 +132,9 @@ class Transition():
         )
         return batch
 
-    def unpack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def unpack(
+        self,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Unpack the stored transition components.
 
@@ -145,8 +151,9 @@ class Transition():
         """
         return (self.obs, self.action, self.reward, self.next_obs, self.done)
 
+
 @dataclass
-class TransitionBatch():
+class TransitionBatch:
     """
     A batch of transitions sampled from the replay buffer.
 
@@ -161,6 +168,7 @@ class TransitionBatch():
     :param dones: Episode termination flags. Shape: (B,)
     :type dones: torch.Tensor
     """
+
     obs: torch.Tensor
     actions: torch.Tensor
     rewards: torch.Tensor
@@ -192,18 +200,23 @@ class TransitionBatch():
             ("dones", self.dones),
         ]:
             if tensor.shape[0] != B:
-                raise ValueError(f"Leading dim mismatch: '{name}' has B={tensor.shape[0]}, but obs has B={B}")
-            
+                raise ValueError(
+                    f"Leading dim mismatch: '{name}' has B={tensor.shape[0]}, but obs has B={B}"
+                )
+
         if self.next_obs.shape[1:] != self.obs.shape[1:]:
             raise ValueError(
                 f"'next_obs' shape (excluding batch) {tuple(self.next_obs.shape[1:])} "
                 f"must match 'obs' shape {tuple(self.obs.shape[1:])}"
             )
         if self.rewards.dim() < 2:
-            raise ValueError(f"'rewards' must be at least 2-D (e.g., (B,1)), got {tuple(self.rewards.shape)}")
+            raise ValueError(
+                f"'rewards' must be at least 2-D (e.g., (B,1)), got {tuple(self.rewards.shape)}"
+            )
         if self.dones.dim() != 1:
-            raise ValueError(f"'dones' must be 1-D with shape (B,), got {tuple(self.dones.shape)}")
-
+            raise ValueError(
+                f"'dones' must be 1-D with shape (B,), got {tuple(self.dones.shape)}"
+            )
 
     def __len__(self) -> int:
         """
@@ -264,7 +277,9 @@ class TransitionBatch():
         )
         return new
 
-    def unpack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def unpack(
+        self,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Unpack the stored transition components.
 

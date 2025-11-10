@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Iterator
+from typing import Optional, Iterator
 from dataclasses import dataclass, field
 import math
 
@@ -11,12 +11,12 @@ class CoordState:
 
 @dataclass(slots=True)
 class Pose:
-    _coord: Dict[str, CoordState] = field(default_factory=dict)
+    _coord: dict[str, CoordState] = field(default_factory=dict)
 
     def set(self, name: str, q: Optional[float] = None, u: Optional[float] = None):
         self._coord[name] = CoordState(q=q, u=u)
 
-    def __iter__(self) -> Iterator[Tuple[str, CoordState]]:
+    def __iter__(self) -> Iterator[tuple[str, CoordState]]:
         return iter(self._coord.items())
 
     def __getitem__(self, name: str) -> CoordState:

@@ -1,13 +1,9 @@
-from typing import Tuple, cast
+from typing import cast
 from pathlib import Path
-import math
 
 import mlflow
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import gymnasium as gym
 import opensim
@@ -30,95 +26,20 @@ from environment.wrappers import (
     SimpleEnvWrapper,
     CompositeRewardWrapper,
 )
-from rl.replay_buffer.replay_buffer import ReplayBuffer
 from rl.sac import SAC, default_target_entropy
-from utils.transition import Transition, TransitionBatch
-from utils.mlflow_utils import get_tmp, tag_attempt, clear_tmp
-from analysis.writer import get_writer
-from analysis.distribution import log_weight_hist, log_grad_hist, log_rewards, log_preds
-
-
-class MLPActor(nn.Module):
-    def __init__(
-        self,
-        state_dim: Tuple[int, ...],
-        action_dim: Tuple[int, ...],
-        log_std_min: float,
-        log_std_max: float,
-    ):
-        super().__init__()
-        self.state_dim = int(np.prod(state_dim))
-        self.action_dim = int(np.prod(action_dim))
-        self.log_std_min = log_std_min
-        self.log_std_max = log_std_max
-
-        hidden_dims = [1024, 1024, 512, 256]
-
-        layers = []
-        input_dim = self.state_dim
-        for h in hidden_dims:
-            layers.append(nn.Linear(input_dim, h))
-            layers.append(nn.LayerNorm(h))
-            layers.append(nn.ReLU())
-            input_dim = h
-
-        self.net = nn.Sequential(*layers)
-        self.mu_head = nn.Linear(hidden_dims[-1], self.action_dim)
-        self.log_std_head = nn.Linear(hidden_dims[-1], self.action_dim)
-
-    def forward(self, s: torch.Tensor, deterministic: bool = False):
-        x = s.view(s.shape[0], -1)
-        h = self.net(x)
-        mu = self.mu_head(h)
-        log_std = self.log_std_head(h).clamp(self.log_std_min, self.log_std_max)
-        std = log_std.exp()
-
-        if deterministic:
-            z = mu
-            log_prob = torch.zeros(s.size(0), 1, device=s.device)
-        else:
-            dist = torch.distributions.Normal(mu, std)
-            z = dist.rsample()  # reparameterization
-            # log prob of pre-tanh sample
-            log_prob = dist.log_prob(z).sum(dim=-1, keepdim=True)
-
-        # Tanh squashing with correction (when stochastic)
-        a = torch.tanh(z)
-        if not deterministic:
-            # change-of-variables correction: log(1 - tanh(z)^2)
-            log_prob -= torch.log(1 - a.pow(2) + 1e-6).sum(dim=-1, keepdim=True)
-
-        return a, log_prob
-
-
-class MLPCritic(nn.Module):
-    def __init__(
-        self,
-        state_dim: Tuple[int, ...],
-        action_dim: Tuple[int, ...],
-        reward_dim: Tuple[int, ...],
-    ):
-        super().__init__()
-        self.state_dim = int(np.prod(state_dim))
-        self.action_dim = int(np.prod(action_dim))
-        self.reward_dim = int(np.prod(reward_dim))
-
-        hidden_dims = [1024, 1024, 512, 256]
-
-        layers = []
-        input_dim = self.state_dim + self.action_dim
-        for h in hidden_dims:
-            layers.append(nn.Linear(input_dim, h))
-            layers.append(nn.LayerNorm(h))
-            layers.append(nn.ReLU())
-            input_dim = h
-        layers.append(nn.Linear(input_dim, self.reward_dim))
-
-        self.q = nn.Sequential(*layers)
-
-    def forward(self, s: torch.Tensor, a: torch.Tensor):
-        x = torch.cat([s.view(s.shape[0], -1), a.view(a.shape[0], -1)], dim=-1)
-        return self.q(x)
+from rl.replay_buffer.replay_buffer import ReplayBuffer
+from rl.transition import TransitionBatch
+from models.shallow_mlp import MLPActor, MLPCritic
+from analysis.mlflow_utils.attempt import tag_attempt
+from analysis.tensorboard_utils.writer import get_writer
+from analysis.tensorboard_utils.distribution import (
+    log_weight_hist,
+    log_grad_hist,
+    log_rewards,
+    log_preds,
+)
+from utils.tmp_dir import get_tmp, clear_tmp
+from utils.save import save_ckpt
 
 
 @torch.no_grad()
@@ -252,16 +173,6 @@ def evaluate(
     return float(np.mean(returns))
 
 
-def save_ckpt(agent: SAC, ckpt_name: str):
-    tmpdir = get_tmp()
-    if not ckpt_name.endswith(".pt"):
-        ckpt_name = f"{ckpt_name}.pt"
-    ckpt_path = tmpdir / ckpt_name
-    agent.save(ckpt_path)
-    mlflow.log_artifact(str(ckpt_path), artifact_path="checkpoints")
-    print(f"Saved checkpoint")
-
-
 def random_action_gamma_dist(
     action_space: gym.spaces.Box,
     shape: float = 0.8,
@@ -328,7 +239,7 @@ def reward_info_to_ndarray(
 def main():
     seed = 42
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    experiment_name = "SAC-Osim4"
+    experiment_name = "SAC-Osim5"
     run_name = "simple sac"
     model = gait14dof22_path
     pose = get_bent_pose()
@@ -367,8 +278,8 @@ def main():
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
     )
 
-    obs_shape = cast(Tuple[int, ...], env.single_observation_space.shape)
-    action_shape = cast(Tuple[int, ...], env.single_action_space.shape)
+    obs_shape = cast(tuple[int, ...], env.single_observation_space.shape)
+    action_shape = cast(tuple[int, ...], env.single_action_space.shape)
     reward_shape = (len(reward_key),)
     reward_weights = torch.ones(len(reward_key), dtype=torch.float32)
     mlflow.log_params(

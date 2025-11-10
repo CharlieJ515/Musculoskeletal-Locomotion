@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import opensim
 import gymnasium as gym
@@ -40,8 +40,8 @@ class OsimEnv(gym.Env[Observation, Action]):
         self,
         *,
         seed: int | None = None,
-        options: Dict[str, Any] | None = None,
-    ) -> Tuple[Observation, Dict[str, Any]]:
+        options: dict[str, Any] | None = None,
+    ) -> tuple[Observation, dict[str, Any]]:
         super().reset(seed=seed)
 
         self.osim_model.reset(self.init_pose)
@@ -52,7 +52,7 @@ class OsimEnv(gym.Env[Observation, Action]):
 
     def step(
         self, action: Action
-    ) -> Tuple[Observation, float, bool, bool, Dict[str, Any]]:
+    ) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
         self.osim_model.actuate(action)
         self.osim_model.integrate()
 
@@ -61,7 +61,7 @@ class OsimEnv(gym.Env[Observation, Action]):
 
         terminated = obs.pelvis.pos.y < 0.6
         truncated = False
-        info: Dict[str, Any] = {}
+        info: dict[str, Any] = {}
 
         return obs, reward, terminated, truncated, info
 

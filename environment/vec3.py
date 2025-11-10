@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Tuple
 import math
 
 import opensim
@@ -41,13 +40,13 @@ class Vec3:
         return Vec3(vec.get(0), vec.get(1), vec.get(2))
 
     @classmethod
-    def from_SpatialVec(cls, vec: opensim.SpatialVec) -> Tuple["Vec3", "Vec3"]:
+    def from_SpatialVec(cls, vec: opensim.SpatialVec) -> tuple["Vec3", "Vec3"]:
         ang = vec.get(0)
         lin = vec.get(1)
         return (cls.from_Vec3(ang), cls.from_Vec3(lin))
 
     @classmethod
-    def from_Transform(cls, transform: opensim.Transform) -> Tuple["Vec3", "Vec3"]:
+    def from_Transform(cls, transform: opensim.Transform) -> tuple["Vec3", "Vec3"]:
         p = transform.p()
         r = transform.R().convertRotationToBodyFixedXYZ()
         return (cls.from_Vec3(r), cls.from_Vec3(p))

@@ -1,4 +1,4 @@
-from typing import List, Any, SupportsFloat
+from typing import Any, SupportsFloat
 
 import gymnasium as gym
 import gymnasium.spaces as spaces
@@ -9,7 +9,7 @@ from environment.osim import Observation, Action, OsimEnv
 
 
 def flatten_observation(obs: Observation) -> np.ndarray:
-    parts: List[float] = []
+    parts: list[float] = []
 
     for j in obs.joint.values():
         parts.extend(j.ang)

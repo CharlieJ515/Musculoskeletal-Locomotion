@@ -1,10 +1,8 @@
-from typing import Iterator, Tuple, Dict, ClassVar, Optional
+from typing import Iterator, ClassVar
 import math
 
 import numpy as np
 from numpy.typing import NDArray
-import gymnasium as gym
-import gymnasium.spaces as spaces
 import torch
 import opensim
 
@@ -13,9 +11,9 @@ from .index import muscle_index
 
 class Action:
     __slots__ = ("_activation",)
-    muscle_order: ClassVar[Tuple[str, ...]] = ()
+    muscle_order: ClassVar[tuple[str, ...]] = ()
 
-    def __init__(self, activation: Dict[str, float], check_integrity: bool = True):
+    def __init__(self, activation: dict[str, float], check_integrity: bool = True):
         self._activation = activation
 
         if check_integrity:
@@ -45,7 +43,7 @@ class Action:
             if v < 0.0 or v > 1.0:
                 raise ValueError(f"Activation out of [0,1] for {k}: {v}")
 
-    def __iter__(self) -> Iterator[Tuple[str, float]]:
+    def __iter__(self) -> Iterator[tuple[str, float]]:
         return iter(self._activation.items())
 
     def __getitem__(self, name: str) -> float:
@@ -81,7 +79,7 @@ class Action:
         if np.any((arr < 0.0) | (arr > 1.0)):
             raise ValueError("Activation values must be within [0, 1].")
 
-        mapping: Dict[str, float] = {
+        mapping: dict[str, float] = {
             name: float(val) for name, val in zip(cls.muscle_order, arr)
         }
         return cls(mapping, check_integrity=False)
@@ -103,7 +101,7 @@ class Action:
                 "Action.muscle_order not initialized. Set Action.muscle_order before calling this method"
             )
 
-        activation: Dict[str, float] = {}
+        activation: dict[str, float] = {}
         muscleset = model.getMuscles()
         for name in cls.muscle_order:
             idx = muscle_index(name)

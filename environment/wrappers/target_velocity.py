@@ -1,12 +1,11 @@
-from typing import TypeVar, Any, Tuple, SupportsFloat
+from typing import TypeVar, Any, SupportsFloat
 import dataclasses
-import math
 import warnings
 
 import gymnasium as gym
 
 from environment.osim import Observation
-from utils.vec3 import Vec3
+from environment.vec3 import Vec3
 
 ActType = TypeVar("ActType")
 
@@ -16,8 +15,8 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
         self,
         env: gym.Env[Observation, ActType],
         *,
-        box_x: Tuple[float, float] = (-10.0, 10.0),
-        box_z: Tuple[float, float] = (-10.0, 10.0),
+        box_x: tuple[float, float] = (-10.0, 10.0),
+        box_z: tuple[float, float] = (-10.0, 10.0),
         max_speed: float = 1.5,  # 5.4 km/h, a decent walking speed
         decel_radius: float = 0.5,  # distance from target to start deceleration
         r_target: float = 0.3,
@@ -65,7 +64,7 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
         *,
         seed: int | None = None,
         options: dict[str, Any] | None = None,
-    ) -> Tuple[Observation, dict[str, Any]]:
+    ) -> tuple[Observation, dict[str, Any]]:
         obs, info = self.env.reset(seed=seed, options=options)
         if obs.normalized:
             raise RuntimeError(
@@ -95,7 +94,7 @@ class TargetVelocityWrapper(gym.Wrapper[Observation, ActType, Observation, ActTy
 
     def step(
         self, action: ActType
-    ) -> Tuple[Observation, SupportsFloat, bool, bool, dict[str, Any]]:
+    ) -> tuple[Observation, SupportsFloat, bool, bool, dict[str, Any]]:
         obs, reward, terminated, truncated, info = self.env.step(action)
         if reward != 0:
             warnings.warn(

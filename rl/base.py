@@ -1,10 +1,10 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict
 from pathlib import Path
 import torch
 
-from utils import TransitionBatch
+from .transition import TransitionBatch
+
 
 class BaseRL(ABC):
     @abstractmethod
@@ -54,7 +54,7 @@ class BaseRL(ABC):
         """
 
     @abstractmethod
-    def update(self, transition: TransitionBatch) -> Dict[str, float]:
+    def update(self, transition: TransitionBatch) -> dict[str, float]:
         """
         Update the model parameters using the given transition.
 

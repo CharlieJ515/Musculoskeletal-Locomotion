@@ -1,12 +1,11 @@
-from typing import TypeVar, Any, SupportsFloat, Tuple
+from typing import TypeVar, Any, SupportsFloat
 import dataclasses
 import warnings
-import math
 
 import gymnasium as gym
 
 from environment.osim import Observation
-from utils.vec3 import Vec3
+from environment.vec3 import Vec3
 
 ActType = TypeVar("ActType")
 
@@ -16,7 +15,7 @@ class TargetSpeedWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]
         self,
         env: gym.Env[Observation, ActType],
         *,
-        speed_range: Tuple[float, float] = (1.2, 1.8),
+        speed_range: tuple[float, float] = (1.2, 1.8),
         speed_tolerance: float = 0.10,  # target speed tolerance
         hold_steps: int = 150,
     ):

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Type, Any
+from typing import Optional, Any
 from pathlib import Path
 
 import torch
@@ -7,9 +7,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 import mlflow
 
-from utils.transition import TransitionBatch
-
 from .base import BaseRL
+from .transition import TransitionBatch
 
 # https://github.com/rail-berkeley/softlearning/blob/master/softlearning/algorithms/sac.py
 # https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/sac/sac.py
@@ -18,14 +17,14 @@ from .base import BaseRL
 # TODO - support shared base network between actor and critics
 
 
-def default_target_entropy(action_space: Tuple[int, ...]) -> int:
+def default_target_entropy(action_space: tuple[int, ...]) -> int:
     """
     Compute the default target entropy for a given action space.
     The default target entropy is defined as the negative product
     of all dimensions in the action space.
 
     :param action_space: Action space
-    :type action_space: Tuple[int, ...]
+    :type action_space: tuple[int, ...]
     :return: Default target entropy
     :rtype: int
     """
@@ -40,14 +39,14 @@ class SAC(BaseRL):
         self,
         # environment
         gamma: float,
-        state_dim: Tuple[int, ...],
-        action_dim: Tuple[int, ...],
-        reward_dim: Tuple[int, ...],
+        state_dim: tuple[int, ...],
+        action_dim: tuple[int, ...],
+        reward_dim: tuple[int, ...],
         # actor
         log_std_min: float,
         log_std_max: float,
-        actor_net: Type[nn.Module],
-        critic_net: Type[nn.Module],
+        actor_net: type[nn.Module],
+        critic_net: type[nn.Module],
         # training
         lr: float,
         tau: float,
@@ -185,7 +184,7 @@ class SAC(BaseRL):
         ):
             target_param.data.lerp_(source_param.data, self.tau)
 
-    def update(self, transition: TransitionBatch) -> Dict[str, Any]:
+    def update(self, transition: TransitionBatch) -> dict[str, Any]:
         """
         Perform a full SAC update step.
 
@@ -217,7 +216,7 @@ class SAC(BaseRL):
 
         return metrics
 
-    def _update_alpha(self, transition: TransitionBatch) -> Dict[str, float]:
+    def _update_alpha(self, transition: TransitionBatch) -> dict[str, float]:
         """
         Update the temperature parameter (alpha).
 
@@ -248,7 +247,7 @@ class SAC(BaseRL):
             "alpha_loss": alpha_loss.detach().cpu().item(),
         }
 
-    def _update_critic(self, transition: TransitionBatch) -> Dict[str, Any]:
+    def _update_critic(self, transition: TransitionBatch) -> dict[str, Any]:
         """
         Update the critic (Q-function) networks.
 
@@ -290,7 +289,7 @@ class SAC(BaseRL):
             "q_target": q_target.detach().cpu(),
         }
 
-    def _update_actor(self, transition: TransitionBatch) -> Dict[str, Any]:
+    def _update_actor(self, transition: TransitionBatch) -> dict[str, Any]:
         """
         Update the policy (actor) network.
 

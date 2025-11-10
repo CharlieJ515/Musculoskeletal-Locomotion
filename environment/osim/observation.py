@@ -1,17 +1,15 @@
-from typing import List, Tuple, Dict, Self, ClassVar, Any
+from typing import Self, ClassVar, Any
 from dataclasses import dataclass
 from math import pi
 
 import opensim
-import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
 
 from .index import body_index
-from utils.vec3 import Vec3
+from environment.vec3 import Vec3
 
 
-Range = Tuple[float, float]
+Range = tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,8 +18,8 @@ class NormSpec:
     T: float
     mass: float
     g: float
-    joint_ranges: Dict[str, Tuple[Range, ...]]
-    muscle_ranges: Dict[str, Dict[str, float]]
+    joint_ranges: dict[str, tuple[Range, ...]]
+    muscle_ranges: dict[str, dict[str, float]]
 
     @classmethod
     def build(cls, T: float, model: opensim.Model, state: opensim.State) -> Self:
@@ -36,11 +34,11 @@ class NormSpec:
 
         # joint
         joint_set = model.getJointSet()
-        joint_ranges: Dict[str, Tuple[Range, ...]] = {}
+        joint_ranges: dict[str, tuple[Range, ...]] = {}
         for i in range(joint_set.getSize()):
             j = joint_set.get(i)
             name = j.getName()
-            rng: List[Range] = []
+            rng: list[Range] = []
 
             n = j.numCoordinates()
             for k in range(n):
@@ -51,7 +49,7 @@ class NormSpec:
             joint_ranges[name] = tuple(rng)
 
         # muscle
-        muscle_ranges: Dict[str, Dict[str, float]] = {}
+        muscle_ranges: dict[str, dict[str, float]] = {}
         muscle_set = model.getMuscles()
         for i in range(muscle_set.getSize()):
             m = muscle_set.get(i)
@@ -81,9 +79,9 @@ class NormSpec:
 @dataclass(frozen=True, slots=True)
 class JointState:
     dof: int
-    ang: Tuple[float, ...]  # angle
-    ang_vel: Tuple[float, ...]  # angular velocity
-    ang_acc: Tuple[float, ...]  # angular acceleration
+    ang: tuple[float, ...]  # angle
+    ang_vel: tuple[float, ...]  # angular velocity
+    ang_acc: tuple[float, ...]  # angular acceleration
 
     normalized: bool = False
 
@@ -96,7 +94,7 @@ class JointState:
 
             raise ValueError(f"{name} length {len(val)} does not match dof={self.dof}")
 
-    def norm(self, rngs: Tuple[Range, ...], T: float) -> "JointState":
+    def norm(self, rngs: tuple[Range, ...], T: float) -> "JointState":
         if len(rngs) != self.dof:
             raise RuntimeError
 
@@ -306,7 +304,7 @@ class MuscleState:
 
     normalized: bool = False
 
-    def norm(self, muscle_range: Dict[str, float]) -> "MuscleState":
+    def norm(self, muscle_range: dict[str, float]) -> "MuscleState":
         return MuscleState(
             activation=self.activation,
             fiber_length=self.fiber_length / muscle_range["fiber_length"],
@@ -367,7 +365,7 @@ class FootState:
         value_list = [values.get(k) for k in range(values.size())]
         data = dict(zip(label_list, value_list))
 
-        def _get_triplet(data: Dict[str, float], base: str) -> Vec3:
+        def _get_triplet(data: dict[str, float], base: str) -> Vec3:
             # Handles missing components by defaulting to 0.0
             return Vec3(
                 float(data.get(f"{base}.X", 0.0)),
@@ -394,13 +392,13 @@ class FootState:
 
 @dataclass(frozen=True, slots=True)
 class Observation:
-    joint: Dict[str, JointState]
-    body: Dict[str, BodyState]
+    joint: dict[str, JointState]
+    body: dict[str, BodyState]
     pelvis: BodyState
-    muscle: Dict[str, MuscleState]
-    foot: Dict[str, FootState]
-    force: Dict[str, Dict[str, float]]
-    marker: Dict[str, PointState]
+    muscle: dict[str, MuscleState]
+    foot: dict[str, FootState]
+    force: dict[str, dict[str, float]]
+    marker: dict[str, PointState]
     mass_center: PointState
     target_velocity: Vec3
 
@@ -417,7 +415,7 @@ class Observation:
     ) -> "Observation":
         # joint
         joint_set = model.getJointSet()
-        joint: Dict[str, JointState] = {}
+        joint: dict[str, JointState] = {}
         for i in range(joint_set.getSize()):
             j = joint_set.get(i)
             name = j.getName()
@@ -427,7 +425,7 @@ class Observation:
         body_set = model.getBodySet()
         pelvis_idx = body_index("pelvis")
         pelvis = body_set.get(pelvis_idx)
-        body: Dict[str, BodyState] = {}
+        body: dict[str, BodyState] = {}
         for i in range(body_set.getSize()):
             b = body_set.get(i)
             name = b.getName()
@@ -438,7 +436,7 @@ class Observation:
 
         # muscle
         muscle_set = model.getMuscles()
-        muscle: Dict[str, MuscleState] = {}
+        muscle: dict[str, MuscleState] = {}
         for i in range(muscle_set.getSize()):
             m = muscle_set.get(i)
             name = m.getName()
@@ -446,7 +444,7 @@ class Observation:
 
         # foot
         force_set = model.getForceSet()
-        foot: Dict[str, FootState] = {}
+        foot: dict[str, FootState] = {}
         for i in range(force_set.getSize()):
             f = force_set.get(i)
             name = f.getName()  # e.g., "foot_r", "foot_l"
@@ -455,7 +453,7 @@ class Observation:
             foot[name] = FootState.from_Force(f, state)
 
         # force
-        force: Dict[str, Dict[str, float]] = {}
+        force: dict[str, dict[str, float]] = {}
         for i in range(force_set.getSize()):
             f = force_set.get(i)
             name = f.getName()
@@ -471,7 +469,7 @@ class Observation:
 
         # marker
         marker_set = model.getMarkerSet()
-        marker: Dict[str, PointState] = {}
+        marker: dict[str, PointState] = {}
         for i in range(marker_set.getSize()):
             mk = marker_set.get(i)
             name = mk.getName()
@@ -509,31 +507,31 @@ class Observation:
         if ref is None:
             raise RuntimeError("pelvis body not found in Observation.body.")
 
-        joint: Dict[str, JointState] = {}
+        joint: dict[str, JointState] = {}
         for name, j in self.joint.items():
             rngs = self.norm_spec.joint_ranges.get(name)
             if rngs is None:
                 raise RuntimeError(f"missing joint ranges for '{name}' in norm_spec.")
             joint[name] = j.norm(rngs, T)
 
-        body: Dict[str, BodyState] = {}
+        body: dict[str, BodyState] = {}
         for name, b in self.body.items():
             body[name] = b.norm(ref, L, T)
 
-        muscle: Dict[str, MuscleState] = {}
+        muscle: dict[str, MuscleState] = {}
         for name, m in self.muscle.items():
             rng = self.norm_spec.muscle_ranges.get(name)
             if rng is None:
                 raise RuntimeError(f"missing muscle range for '{name}' in norm_spec.")
             muscle[name] = m.norm(rng)
 
-        foot: Dict[str, FootState] = {}
+        foot: dict[str, FootState] = {}
         for name, f in self.foot.items():
             foot[name] = f.norm(mg, L)
 
-        force: Dict[str, Dict[str, float]] = self.force
+        force: dict[str, dict[str, float]] = self.force
 
-        marker: Dict[str, PointState] = {}
+        marker: dict[str, PointState] = {}
         for name, m in self.marker.items():
             marker[name] = m.norm(ref, L, T)
 
@@ -552,7 +550,7 @@ class Observation:
             target_velocity=self.target_velocity,
         )
 
-    def to_L2M(self) -> Dict[str, Any]:
+    def to_L2M(self) -> dict[str, Any]:
         obs_dict = {}
 
         pelvis_body = self.body["pelvis"]

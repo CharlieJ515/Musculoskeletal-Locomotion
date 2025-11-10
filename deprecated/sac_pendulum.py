@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple, cast  
+from typing import Optional, Tuple, cast
 
 import mlflow
 import torch
@@ -12,11 +12,17 @@ import imageio.v2 as imageio
 from rl.replay_buffer.replay_buffer import ReplayBuffer
 from rl.sac import SAC, default_target_entropy
 from utils.transition import Transition
-from utils.mlflow_utils import get_tmp, tag_attempt, clear_tmp, get_tmp
+from analysis.mlflow_utils.mlflow_utils import get_tmp, tag_attempt, clear_tmp, get_tmp
 
 
 class MLPActor(nn.Module):
-    def __init__(self, state_dim: Tuple[int, ...], action_dim: Tuple[int, ...], log_std_min: float, log_std_max: float):
+    def __init__(
+        self,
+        state_dim: Tuple[int, ...],
+        action_dim: Tuple[int, ...],
+        log_std_min: float,
+        log_std_max: float,
+    ):
         super().__init__()
         self.state_dim = int(np.prod(state_dim))
         self.action_dim = int(np.prod(action_dim))
@@ -25,8 +31,10 @@ class MLPActor(nn.Module):
 
         hidden = 256
         self.net = nn.Sequential(
-            nn.Linear(self.state_dim, hidden), nn.ReLU(),
-            nn.Linear(hidden, hidden), nn.ReLU(),
+            nn.Linear(self.state_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
         )
         self.mu_head = nn.Linear(hidden, self.action_dim)
         self.log_std_head = nn.Linear(hidden, self.action_dim)
@@ -63,8 +71,10 @@ class MLPCritic(nn.Module):
         self.action_dim = int(np.prod(action_dim))
         hidden = 256
         self.q = nn.Sequential(
-            nn.Linear(self.state_dim + self.action_dim, hidden), nn.ReLU(),
-            nn.Linear(hidden, hidden), nn.ReLU(),
+            nn.Linear(self.state_dim + self.action_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
             nn.Linear(hidden, 1),
         )
 
@@ -83,7 +93,7 @@ def evaluate(
     fps: Optional[int] = None,
 ):
     active_run = mlflow.active_run()
-    active_run_name = active_run.data.tags.get("mlflow.runName") # type: ignore[reportOptionalMemberAccess]
+    active_run_name = active_run.data.tags.get("mlflow.runName")  # type: ignore[reportOptionalMemberAccess]
 
     agent.eval()
     gamma = agent.gamma
@@ -133,7 +143,7 @@ def evaluate(
                     "Q2": float(q2),
                     "Qmin": float(qmin),
                 },
-                step=ep_step
+                step=ep_step,
             )
 
             all_actions.append(a_np)
@@ -151,7 +161,7 @@ def evaluate(
                 "total_discounted_return": float(ep_disc),
                 "episode_length": int(ep_step),
             },
-            step=ep_step
+            step=ep_step,
         )
 
         # Create video artifact
@@ -177,6 +187,7 @@ def evaluate(
     agent.train(True)
     return float(np.mean(returns))
 
+
 def main():
     seed = 0
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -188,13 +199,15 @@ def main():
     mlflow.start_run(run_name=run_name)
     tag_attempt(experiment_name, run_name)
 
-    mlflow.log_params({
-        "env_id": "Pendulum-v1",
-        "seed": seed,
-        "gym_version": gym.__version__,
-        "torch_version": torch.__version__,
-        "numpy_version": np.__version__,
-    })
+    mlflow.log_params(
+        {
+            "env_id": "Pendulum-v1",
+            "seed": seed,
+            "gym_version": gym.__version__,
+            "torch_version": torch.__version__,
+            "numpy_version": np.__version__,
+        }
+    )
 
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -207,17 +220,19 @@ def main():
     obs_shape = cast(Tuple[int, ...], obs_space.shape)
     act_space = env.action_space
     act_shape = cast(Tuple[int, ...], act_space.shape)
-    rew_shape = (1, )
+    rew_shape = (1,)
 
     # log observation / action space size and range
-    mlflow.log_params({
-        "obs_dim": obs_space.shape,
-        "obs_low": obs_space.low, # type: ignore[reportAttributeAccessIssue]
-        "obs_high": obs_space.high, # type: ignore[reportAttributeAccessIssue]
-        "act_dim": act_space.shape,
-        "act_low": act_space.low, # type: ignore[reportAttributeAccessIssue]
-        "act_high": act_space.high, # type: ignore[reportAttributeAccessIssue]
-    })
+    mlflow.log_params(
+        {
+            "obs_dim": obs_space.shape,
+            "obs_low": obs_space.low,  # type: ignore[reportAttributeAccessIssue]
+            "obs_high": obs_space.high,  # type: ignore[reportAttributeAccessIssue]
+            "act_dim": act_space.shape,
+            "act_low": act_space.low,  # type: ignore[reportAttributeAccessIssue]
+            "act_high": act_space.high,  # type: ignore[reportAttributeAccessIssue]
+        }
+    )
 
     # SAC hyperparams
     agent = SAC(
@@ -260,7 +275,8 @@ def main():
     s, _ = env.reset(seed=seed)
     agent.train(True)
 
-    def to_tensor(x): return torch.as_tensor(x, dtype=torch.float32)
+    def to_tensor(x):
+        return torch.as_tensor(x, dtype=torch.float32)
 
     ep_return, ep_len = 0.0, 0
     for t in range(1, total_steps + 1):
@@ -274,7 +290,8 @@ def main():
 
         s2, r, terminated, truncated, _ = env.step(a)
         done = terminated or truncated
-        ep_return += float(r); ep_len += 1
+        ep_return += float(r)
+        ep_len += 1
 
         # Store transition
         tr = Transition(
@@ -296,7 +313,9 @@ def main():
 
         # Episode reset
         if done:
-            print(f"Episode finished at step {t:6d} | length={ep_len} | return={ep_return:.2f}")
+            print(
+                f"Episode finished at step {t:6d} | length={ep_len} | return={ep_return:.2f}"
+            )
             s, _ = env.reset()
             ep_return, ep_len = 0.0, 0
 
@@ -316,9 +335,10 @@ def main():
     agent.save(ckpt_path)
     print(f"Saved to {ckpt_path.resolve()}")
 
+
 if __name__ == "__main__":
     try:
         main()
     finally:
-        mlflow.end_run() # mlflow.end_run is idempotent
+        mlflow.end_run()  # mlflow.end_run is idempotent
         clear_tmp()

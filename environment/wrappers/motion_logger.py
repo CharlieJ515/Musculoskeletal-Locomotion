@@ -1,4 +1,4 @@
-from typing import List, Optional, TypeVar, Generic, Any, SupportsFloat
+from typing import Optional, TypeVar, Any, SupportsFloat
 from pathlib import Path
 import warnings
 
@@ -47,7 +47,7 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
         base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
         return base_env.state
 
-    def _reset_table(self, coord_names: List[str]):
+    def _reset_table(self, coord_names: list[str]):
         if self.table is not None:
             raise RuntimeError(
                 f"Attempting to create new table before saving existing one."
@@ -61,7 +61,7 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
         self,
         model: opensim.Model,
         state: opensim.State,
-    ) -> List[float]:
+    ) -> list[float]:
         model.realizePosition(state)
 
         coord_set: opensim.CoordinateSet = model.getCoordinateSet()
@@ -74,7 +74,7 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
 
         return vals
 
-    def _append_row(self, t: float, values: List[float]):
+    def _append_row(self, t: float, values: list[float]):
         if len(values) != len(self.coord_names):
             raise ValueError()
         row = opensim.RowVector(values)

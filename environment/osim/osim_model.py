@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 import warnings
 import psutil
 import os
@@ -14,8 +14,8 @@ from .pose import Pose
 from .action import Action
 from .observation import Observation, NormSpec
 from .index import build_index_bundle
-from utils import require_reset
-from utils.vec3 import Vec3
+from environment.reset import require_reset
+from environment.vec3 import Vec3
 
 
 class OsimModel:
@@ -69,7 +69,7 @@ class OsimModel:
         # we will change levels of constants.
         # One actuartor per each muscle
         self._brain = opensim.PrescribedController()
-        self._actuator_idx: Dict[str, int] = {}
+        self._actuator_idx: dict[str, int] = {}
         muscle_set = self._model.getMuscles()
         for i in range(muscle_set.getSize()):
             muscle = muscle_set.get(i)

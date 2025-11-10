@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict, Tuple
+from typing import Dict, Tuple
 import dataclasses
 
 import opensim
