@@ -69,6 +69,7 @@ def get_tilted_pose() -> Pose:
 
 def get_bent_pose() -> Pose:
     pose = get_tilted_pose()
+    pose.set("pelvis_ty", q=0.910)
     pose.set("knee_angle_r", q=math.radians(-15))
     pose.set("knee_angle_l", q=math.radians(-15))
     pose.set("ankle_angle_r", q=math.radians(15))
