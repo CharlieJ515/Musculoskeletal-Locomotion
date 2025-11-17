@@ -32,6 +32,20 @@ class MLPActor(nn.Module):
         self.mu_head = nn.Linear(hidden_dims[-1], self.action_dim)
         self.log_std_head = nn.Linear(hidden_dims[-1], self.action_dim)
 
+        self._init_layers()
+
+    def _init_layers(self):
+        for m in self.net:
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                nn.init.constant_(m.bias, 0.0)
+
+        nn.init.orthogonal_(self.mu_head.weight, gain=0.01)
+        nn.init.constant_(self.mu_head.bias, 0.0)
+
+        nn.init.orthogonal_(self.log_std_head.weight, gain=0.01)
+        nn.init.constant_(self.log_std_head.bias, 0.0)
+
     def forward(self, s: torch.Tensor, deterministic: bool = False):
         x = s.view(s.shape[0], -1)
         h = self.net(x)
@@ -78,10 +92,22 @@ class MLPCritic(nn.Module):
             layers.append(nn.LayerNorm(h))
             layers.append(nn.ReLU())
             input_dim = h
-        layers.append(nn.Linear(input_dim, self.reward_dim))
+        self.net = nn.Sequential(*layers)
+        self.q_head = nn.Linear(input_dim, self.reward_dim)
 
-        self.q = nn.Sequential(*layers)
+        self._init_layers()
+
+    def _init_layers(self):
+        for m in self.net:
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                nn.init.constant_(m.bias, 0.0)
+
+        nn.init.orthogonal_(self.q_head.weight, gain=1.0)
+        nn.init.constant_(self.q_head.bias, 0.0)
 
     def forward(self, s: torch.Tensor, a: torch.Tensor):
         x = torch.cat([s.view(s.shape[0], -1), a.view(a.shape[0], -1)], dim=-1)
-        return self.q(x)
+        x = self.net(x)
+        x = self.q_head(x)
+        return x
