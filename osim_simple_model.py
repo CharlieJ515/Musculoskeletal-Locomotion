@@ -41,6 +41,7 @@ from analysis.tensorboard_utils.distribution import (
 )
 from utils.tmp_dir import get_tmp, clear_tmp
 from utils.save import save_ckpt
+from deprecated.gamma_action_sample import random_action_gamma
 
 
 @torch.no_grad()
@@ -200,18 +201,21 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
     time_aware_env = gym.wrappers.TimeAwareObservation(
         simple_env, flatten=True, normalize_time=True
     )
-    rescale_env = RescaleActionWrapper(time_aware_env, "abs")
+    # rescale_env = RescaleActionWrapper(time_aware_env, "abs")
+    rescale_env = gym.wrappers.RescaleAction(
+        time_aware_env, np.float32(-1.0), np.float32(1.0)
+    )
     return rescale_env
 
 
-def sample_gaussian_action(
-    action_space: gym.spaces.Box,
-    mean: float = 0.0,
-    std: float = 0.55,
-) -> np.ndarray:
-    raw = np.random.normal(loc=mean, scale=std, size=action_space.shape)
+# def sample_gaussian_action(
+#     action_space: gym.spaces.Box,
+#     mean: float = 0.0,
+#     std: float = 0.55,
+# ) -> np.ndarray:
+#     raw = np.random.normal(loc=mean, scale=std, size=action_space.shape)
 
-    return np.clip(raw, action_space.low, action_space.high)
+#     return np.clip(raw, action_space.low, action_space.high)
 
 
 def reward_info_to_ndarray(
@@ -331,7 +335,7 @@ def main():
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
     for t in range(1, start_random):
-        a_np = sample_gaussian_action(
+        a_np = random_action_gamma(
             env.action_space  # pyright: ignore[reportArgumentType]
         )
         s_next_np, r, terminated, truncated, info = env.step(a_np)
