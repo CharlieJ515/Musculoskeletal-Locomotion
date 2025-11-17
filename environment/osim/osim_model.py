@@ -13,7 +13,7 @@ import opensim
 from .pose import Pose
 from .action import Action
 from .observation import Observation, NormSpec
-from .index import build_index_bundle
+from .index import build_index_bundle, coordinate_index
 from environment.reset import require_reset
 from environment.vec3 import Vec3
 
@@ -112,12 +112,10 @@ class OsimModel:
 
     def _reset_pose(self, pose: Pose):
         coord_set = self._model.getCoordinateSet()
-        for i in range(coord_set.getSize()):
-            coord = coord_set.get(i)
-            name = coord.getName()
+        for name, coord_state in pose:
+            idx = coordinate_index(name)
+            coord = coord_set.get(idx)
 
-            if name not in pose:
-                continue
             if coord.getLocked(self._state):
                 warnings.warn(
                     f"Coordinate '{name}' is locked — skipping.",
@@ -126,7 +124,6 @@ class OsimModel:
                 )
                 continue
 
-            coord_state = pose[name]
             q, u = coord_state.q, coord_state.u
             if q is not None:
                 lo, hi = coord.getRangeMin(), coord.getRangeMax()

@@ -13,6 +13,7 @@ class IndexBundle:
     marker: dict[str, int]
     force_label: dict[tuple[str, str], int]
     probe: dict[str, int]
+    coordinate: dict[str, int]
 
 
 _index_bundle: Optional[IndexBundle] = None
@@ -27,6 +28,7 @@ def build_index_bundle(model: opensim.Model) -> IndexBundle:
     force_set = model.getForceSet()
     marker_set = model.getMarkerSet()
     probe_set = model.getProbeSet()
+    coord_set = model.getCoordinateSet()
 
     joint_index = {joint_set.get(i).getName(): i for i in range(joint_set.getSize())}
     body_index = {body_set.get(i).getName(): i for i in range(body_set.getSize())}
@@ -34,6 +36,7 @@ def build_index_bundle(model: opensim.Model) -> IndexBundle:
     force_index = {force_set.get(i).getName(): i for i in range(force_set.getSize())}
     marker_index = {marker_set.get(i).getName(): i for i in range(marker_set.getSize())}
     probe_index = {probe_set.get(i).getName(): i for i in range(probe_set.getSize())}
+    coord_index = {coord_set.get(i).getName(): i for i in range(coord_set.getSize())}
 
     force_label_index: dict[tuple[str, str], int] = {}
     for i in range(force_set.getSize()):
@@ -51,6 +54,7 @@ def build_index_bundle(model: opensim.Model) -> IndexBundle:
         marker=marker_index,
         force_label=force_label_index,
         probe=probe_index,
+        coordinate=coord_index,
     )
 
     _index_bundle = index_bundle
@@ -104,6 +108,13 @@ def probe_index(name: str) -> int:
         return get_index_bundle().probe[name]
     except KeyError:
         raise KeyError(f"Unknown probe '{name}'")
+
+
+def coordinate_index(name: str) -> int:
+    try:
+        return get_index_bundle().coordinate[name]
+    except KeyError:
+        raise KeyError(f"Unknown coordinate '{name}'")
 
 
 def force_label_index(force_name: str, label: str) -> int:
