@@ -25,6 +25,7 @@ from environment.wrappers import (
     MotionLoggerWrapper,
     SimpleEnvWrapper,
     CompositeRewardWrapper,
+    RescaleActionWrapper,
 )
 from rl.sac import SAC, default_target_entropy
 from rl.replay_buffer.replay_buffer import ReplayBuffer
@@ -173,27 +174,6 @@ def evaluate(
     return float(np.mean(returns))
 
 
-def random_action_gamma_dist(
-    action_space: gym.spaces.Box,
-    shape: float = 0.8,
-    scale: float = 1.0,
-    clip_percentiles: tuple[float, float] = (0.5, 99.5),
-) -> np.ndarray:
-    # Sample from Gamma(k, θ)
-    samples = np.random.gamma(shape=shape, scale=scale, size=action_space.shape)
-
-    # Normalize to (-1, 1)
-    low_p, high_p = np.percentile(samples, clip_percentiles)
-    samples = np.clip(samples, low_p, high_p)
-    samples_norm = 2 * (samples - low_p) / (high_p - low_p) - 1
-
-    # Map to actual env action space
-    action_low, action_high = action_space.low, action_space.high
-    action = action_low + (samples_norm + 1) * 0.5 * (action_high - action_low)
-
-    return np.clip(action, action_low, action_high)
-
-
 def create_env(model: Path, pose: Pose) -> gym.Env:
     osim_env = OsimEnv(model, pose, visualize=True)
     time_limit_env = gym.wrappers.TimeLimit(osim_env, 500)
@@ -220,10 +200,18 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
     time_aware_env = gym.wrappers.TimeAwareObservation(
         simple_env, flatten=True, normalize_time=True
     )
-    rescale_env = gym.wrappers.RescaleAction(
-        time_aware_env, np.float32(-1.0), np.float32(1.0)
-    )
+    rescale_env = RescaleActionWrapper(time_aware_env, "abs")
     return rescale_env
+
+
+def sample_gaussian_action(
+    action_space: gym.spaces.Box,
+    mean: float = 0.0,
+    std: float = 0.55,
+) -> np.ndarray:
+    raw = np.random.normal(loc=mean, scale=std, size=action_space.shape)
+
+    return np.clip(raw, action_space.low, action_space.high)
 
 
 def reward_info_to_ndarray(
@@ -239,7 +227,7 @@ def reward_info_to_ndarray(
 def main():
     seed = 42
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    experiment_name = "SAC-Osim5"
+    experiment_name = "SAC-Osim6"
     run_name = "simple sac"
     model = gait14dof22_path
     pose = get_bent_pose()
@@ -343,7 +331,7 @@ def main():
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
     for t in range(1, start_random):
-        a_np = random_action_gamma_dist(
+        a_np = sample_gaussian_action(
             env.action_space  # pyright: ignore[reportArgumentType]
         )
         s_next_np, r, terminated, truncated, info = env.step(a_np)
