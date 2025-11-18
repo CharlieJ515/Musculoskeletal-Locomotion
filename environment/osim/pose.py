@@ -60,19 +60,27 @@ def get_osim_rl_pose() -> Pose:
 
 def get_tilted_pose() -> Pose:
     pose = get_osim_rl_pose()
-    pose.set("pelvis_tilt", q=math.radians(-15))
-    pose.set("hip_flexion_r", q=math.radians(15))
-    pose.set("hip_flexion_l", q=math.radians(15))
+    pose.set("pelvis_tilt", q=math.radians(-12))
+    pose.set("hip_flexion_r", q=math.radians(12))
+    pose.set("hip_flexion_l", q=math.radians(12))
 
     return pose
 
 
 def get_bent_pose() -> Pose:
     pose = get_tilted_pose()
-    pose.set("pelvis_ty", q=0.910)
-    pose.set("knee_angle_r", q=math.radians(-15))
-    pose.set("knee_angle_l", q=math.radians(-15))
-    pose.set("ankle_angle_r", q=math.radians(15))
-    pose.set("ankle_angle_l", q=math.radians(15))
+    pose.set("pelvis_ty", q=0.920)
+    pose.set("knee_angle_r", q=math.radians(-12))
+    pose.set("knee_angle_l", q=math.radians(-12))
+    pose.set("ankle_angle_r", q=math.radians(12))
+    pose.set("ankle_angle_l", q=math.radians(12))
 
+    return pose
+
+
+def get_forward_pose() -> Pose:
+    pose = get_bent_pose()
+    pose.set("hip_flexion_r", q=math.radians(20))
+    pose.set("hip_adduction_r", q=math.radians(-3))
+    pose.set("hip_adduction_l", q=math.radians(-3))
     return pose
