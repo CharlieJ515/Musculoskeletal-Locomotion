@@ -41,7 +41,7 @@ class MLPActor(nn.Module):
                 nn.init.constant_(m.bias, 0.0)
 
         nn.init.orthogonal_(self.mu_head.weight, gain=0.01)
-        nn.init.constant_(self.mu_head.bias, 0.0)
+        nn.init.constant_(self.mu_head.bias, -0.5)
 
         nn.init.orthogonal_(self.log_std_head.weight, gain=0.01)
         nn.init.constant_(self.log_std_head.bias, 0.0)
