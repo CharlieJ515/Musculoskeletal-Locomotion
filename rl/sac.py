@@ -305,8 +305,8 @@ class SAC(BaseRL):
         action, log_prob = self.actor(s)
         q1 = self.Q1(s, action)
         q2 = self.Q2(s, action)
-        # q = torch.min(q1, q2) # softlearning
-        q = 0.5 * (q1 + q2)  # SB3
+        q = torch.min(q1, q2)  # softlearning
+        # q = 0.5 * (q1 + q2)  # SB3
         q = torch.matmul(q, self.reward_weight)
 
         actor_loss = (alpha * log_prob - q).mean()
@@ -398,6 +398,6 @@ class SAC(BaseRL):
                 f"{p}policy_update_freq": self.policy_update_freq,
                 f"{p}reward_weight": self.reward_weight.detach().cpu().tolist(),
                 f"{p}device": self.device,
-                f"{p}use_jit": self._jit_compile,
+                f"{p}use_jit": self.use_jit,
             }
         )
