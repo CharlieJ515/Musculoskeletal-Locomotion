@@ -40,6 +40,7 @@ class FrameSkipWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
 
             if terminated or truncated:
                 break
+        total_reward = total_reward / self.skip
 
         if not self.has_composite_reward:
             return obs, total_reward, terminated, truncated, info  # type: ignore
@@ -50,7 +51,6 @@ class FrameSkipWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
             for r in rewards:
                 reward += r[key]
 
-            composite_reward[key] = reward
-
+            composite_reward[key] = reward / self.skip
         info["rewards"] = composite_reward  # type: ignore
         return obs, total_reward, terminated, truncated, info  # type: ignore
