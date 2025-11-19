@@ -1,4 +1,5 @@
 from typing import Optional, Any
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -15,6 +16,30 @@ from .transition import TransitionBatch
 
 # TODO - add lr scheduler
 # TODO - support shared base network between actor and critics
+
+
+@dataclass
+class SACConfig:
+    state_dim: tuple[int, ...]
+    action_dim: tuple[int, ...]
+    actor_net: type[nn.Module]
+    critic_net: type[nn.Module]
+    target_entropy: float
+    reward_dim: tuple[int, ...] = (1,)
+    reward_weight: torch.Tensor = torch.ones(1)
+    gamma: float = 0.99
+    log_std_min: float = -20.0
+    log_std_max: float = 2.0
+    lr: float = 3e-5
+    tau: float = 1e-2
+    weight_decay: float = 0.0
+    policy_update_freq: int = 1
+    device: Optional[torch.device] = None
+    use_jit: bool = True
+    train: bool = True
+    name: str = "SAC"
+    load_chkpt: bool = False
+    chkpt_file: Optional[Path] = None
 
 
 def default_target_entropy(action_space: tuple[int, ...]) -> int:
@@ -400,4 +425,29 @@ class SAC(BaseRL):
                 f"{p}device": self.device,
                 f"{p}use_jit": self.use_jit,
             }
+        )
+
+    @classmethod
+    def from_config(cls, cfg: SACConfig) -> "SAC":
+        return cls(
+            gamma=cfg.gamma,
+            state_dim=cfg.state_dim,
+            action_dim=cfg.action_dim,
+            reward_dim=cfg.reward_dim,
+            log_std_min=cfg.log_std_min,
+            log_std_max=cfg.log_std_max,
+            actor_net=cfg.actor_net,
+            critic_net=cfg.critic_net,
+            lr=cfg.lr,
+            tau=cfg.tau,
+            target_entropy=cfg.target_entropy,
+            weight_decay=cfg.weight_decay,
+            policy_update_freq=cfg.policy_update_freq,
+            reward_weight=cfg.reward_weight,
+            device=cfg.device,
+            use_jit=cfg.use_jit,
+            train=cfg.train,
+            name=cfg.name,
+            load_chkpt=cfg.load_chkpt,
+            chkpt_file=cfg.chkpt_file,
         )
