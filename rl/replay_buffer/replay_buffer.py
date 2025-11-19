@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass
 import warnings
 from typing import Union
 
@@ -7,6 +8,19 @@ import mlflow
 
 from rl.replay_buffer.base import BaseReplayBuffer
 from rl.transition import Transition, TransitionBatch
+
+
+@dataclass
+class ReplayBufferConfig:
+    capacity: int
+    obs_shape: tuple[int, ...]
+    action_shape: tuple[int, ...]
+    reward_shape: tuple[int, ...] = (1,)
+    device: torch.device = torch.device("cpu")
+    obs_dtype: torch.dtype = torch.float32
+    action_dtype: torch.dtype = torch.float32
+    reward_dtype: torch.dtype = torch.float32
+    name: str = "ReplayBuffer"
 
 
 class ReplayBuffer(BaseReplayBuffer):
@@ -25,7 +39,7 @@ class ReplayBuffer(BaseReplayBuffer):
         obs_dtype: torch.dtype = torch.float32,
         action_dtype: torch.dtype = torch.float32,
         reward_dtype: torch.dtype = torch.float32,
-        name: str = "PlainReplayBuffer",
+        name: str = "ReplayBuffer",
     ) -> None:
         """
         Initialize the replay buffer with preallocated storage.
@@ -305,4 +319,18 @@ class ReplayBuffer(BaseReplayBuffer):
             rewards=rewards,
             next_obs=next_obs,
             dones=dones,
+        )
+
+    @classmethod
+    def from_config(cls, cfg: "ReplayBufferConfig") -> "ReplayBuffer":
+        return cls(
+            capacity=cfg.capacity,
+            obs_shape=cfg.obs_shape,
+            action_shape=cfg.action_shape,
+            reward_shape=cfg.reward_shape,
+            device=cfg.device,
+            obs_dtype=cfg.obs_dtype,
+            action_dtype=cfg.action_dtype,
+            reward_dtype=cfg.reward_dtype,
+            name=cfg.name,
         )
