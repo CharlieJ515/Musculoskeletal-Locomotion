@@ -30,6 +30,8 @@ from environment.wrappers import (
     CompositeRewardWrapper,
     BabyStepsWrapper,
     FrameSkipWrapper,
+    BabyWalkerWrapper,
+    CoordinateLimitForce,
 )
 from rl.sac import SAC, default_target_entropy, SACConfig
 from rl.replay_buffer.replay_buffer import ReplayBuffer, ReplayBufferConfig
@@ -187,10 +189,44 @@ def evaluate(
 
 
 def create_env(model: Path, pose: Pose) -> gym.Env:
-    osim_env = OsimEnv(model, pose, visualize=True)
-    # babystep_env = BabyStepsWrapper(osim_env)
-    env = gym.wrappers.TimeLimit(osim_env, 500)
+    osim_env = OsimEnv(model, pose, visualize=False)
+    env = gym.wrappers.TimeLimit(osim_env, 1000)
     env = TargetSpeedWrapper(env, speed_range=(0.25, 0.75))
+    # env = BabyWalkerWrapper(
+    #     env,
+    #     [
+    #         CoordinateLimitForce(
+    #             coordinate_name="pelvis_ty",
+    #             upper_limit=2.0,
+    #             upper_stiffness=0.01,
+    #             lower_limit=0.90,
+    #             lower_stiffness=750.0,
+    #             damping=50.0,
+    #             transition=0.05,
+    #             dissipate_energy=False,
+    #         ),
+    #         CoordinateLimitForce(
+    #             coordinate_name="pelvis_list",
+    #             upper_limit=12.0,
+    #             upper_stiffness=100.0,
+    #             lower_limit=-12.0,
+    #             lower_stiffness=50.0,
+    #             damping=20.0,
+    #             transition=0.05,
+    #             dissipate_energy=False,
+    #         ),
+    #         CoordinateLimitForce(
+    #             coordinate_name="pelvis_tilt",
+    #             upper_limit=12.0,
+    #             upper_stiffness=100.0,
+    #             lower_limit=-12.0,
+    #             lower_stiffness=50.0,
+    #             damping=20.0,
+    #             transition=0.05,
+    #             dissipate_energy=False,
+    #         ),
+    #     ],
+    # )
     reward_components = {
         "alive_reward": AliveReward(1.0),
         "velocity_reward": VelocityReward(1.0),
@@ -200,7 +236,7 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
         "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
     }
     reward_weights = {
-        "alive_reward": 0.5,
+        "alive_reward": 1.0,
         "velocity_reward": 1.0,
         "energy_reward": 1.0,
         # "smoothness_reward": 1.0,
@@ -212,6 +248,7 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
     env = FrameSkipWrapper(env, 4)
     env = SimpleEnvWrapper(env)
     env = gym.wrappers.TimeAwareObservation(env, flatten=True, normalize_time=True)
+    env = gym.wrappers.FrameStackObservation(env, stack_size=4)
     # rescale_env = RescaleActionWrapper(time_aware_env, "abs")
     env = gym.wrappers.RescaleAction(env, np.float32(-1.0), np.float32(1.0))
     return env
@@ -370,16 +407,16 @@ if __name__ == "__main__":
     from analysis.mlflow_utils.start import start_mlflow
 
     cfg = TrainConfig(
-        total_steps=100_000,
-        start_random=1000,
+        total_steps=1_000_000,
+        start_random=100,
         batch_size=256,
         eval_interval=10_000,
         eval_episodes=1,
         log_interval=20,
         seed=42,
         model=gait14dof22_path,
-        pose=get_forward_pose(),
-        num_env=4,
+        pose=get_bent_pose(),
+        num_env=32,
         reward_key=[
             "alive_reward",
             "velocity_reward",
