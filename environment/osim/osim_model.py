@@ -38,7 +38,7 @@ class OsimModel:
 
         # Enable the visualizer
         self.visualize = visualize
-        self.visualizer: Optional[psutil.Process] = None
+        self._visualizer: Optional[psutil.Process] = None
         self.initSystem()
 
         self.integrator_accuracy = integrator_accuracy
