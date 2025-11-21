@@ -1,0 +1,129 @@
+from typing import TypeVar, Any
+from pathlib import Path
+from dataclasses import dataclass
+
+import gymnasium as gym
+import numpy as np
+import opensim
+
+from environment.osim import OsimEnv, Observation
+
+ActType = TypeVar("ActType")
+
+
+@dataclass
+class CoordinateLimitForce:
+    coordinate_name: str
+    upper_limit: float
+    upper_stiffness: float
+    lower_limit: float
+    lower_stiffness: float
+    damping: float
+    transition: float
+    dissipate_energy: bool
+
+
+class BabyWalkerWrapper(gym.Wrapper[Observation, ActType, Observation, ActType]):
+    def __init__(
+        self,
+        env: gym.Env,
+        limits: list[CoordinateLimitForce],
+        *,
+        reward_scale: float = 1.0,
+    ):
+        super().__init__(env)
+        self.base_name = "baby_walker"
+        self.reward_scale = reward_scale
+        self.limits: dict[str, CoordinateLimitForce] = {}
+        self._inject_limits(limits)
+
+    def _get_model(self) -> opensim.Model:
+        base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
+        return base_env.model
+
+    def _inject_limits(self, limits: list[CoordinateLimitForce]):
+        model = self._get_model()
+        force_set: opensim.ForceSet = model.getForceSet()
+
+        for c in limits:
+            limit_name = f"{self.base_name}_{c.coordinate_name}"
+            if force_set.contains(limit_name):
+                continue
+
+            limit = opensim.CoordinateLimitForce()
+            limit.setName(limit_name)
+            limit.set_coordinate(c.coordinate_name)
+            limit.set_upper_limit(c.upper_limit)
+            limit.set_upper_stiffness(c.upper_stiffness)
+            limit.set_lower_limit(c.lower_limit)
+            limit.set_lower_stiffness(c.lower_stiffness)
+            limit.set_damping(c.damping)
+            limit.set_transition(c.transition)
+            limit.set_compute_dissipation_energy(c.dissipate_energy)
+
+            model.addForce(limit)
+            self.limits[limit_name] = c
+
+        # restart to apply modifications
+        base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
+        base_env.close()
+        base_env.osim_model.initSystem()
+
+    def step(
+        self, action: ActType
+    ) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        penalty = 0.0
+        bodyweight = obs.norm_spec.mass * obs.norm_spec.g  # type: ignore
+        forces: dict[str, float] = {}
+        for name, c in self.limits.items():
+            force_state = obs.force[name]
+            f = force_state[name]
+
+            forces[name] = f
+            penalty += f / bodyweight
+
+        info["baby_walker"] = {
+            "penalty": penalty,
+            "forces": forces,
+        }
+
+        total_reward = float(reward) - penalty * self.reward_scale
+        return obs, total_reward, terminated, truncated, info
+
+
+def plot_limit_force(
+    env: BabyWalkerWrapper, coordinate_name: str, interval: float = 0.1
+):
+    limit_name = f"{env.base_name}_{coordinate_name}"
+    if limit_name not in env.limits:
+        raise ValueError(f"{limit_name} not in {env.limits.keys()}")
+    limit = env.limits[limit_name]
+
+    base_env: OsimEnv = env.unwrapped  # type: ignore
+    model = base_env.model
+    state = base_env.state
+
+    coord_set: opensim.CoordinateSet = model.getCoordinateSet()
+    coord: opensim.Coordinate = coord_set.get(limit.coordinate_name)
+    coord_min: float = coord.get_range(0)
+    coord_max: float = coord.get_range(1)
+
+    force_set: opensim.ForceSet = model.getForceSet()
+    force: opensim.Force = force_set.get(limit_name)
+    limit_force: opensim.CoordinateLimitForce = (
+        opensim.CoordinateLimitForce.safeDownCast(force)
+    )
+
+    coord_values = np.arange(coord_min, coord_max, interval)
+    force_values = np.zeros_like(coord_values)
+
+    for idx, c in enumerate(coord_values):
+        coord.setValue(state, c)
+        model.realizeAcceleration(state)
+
+        f = limit_force.calcLimitForce(state)
+        force_values[idx] = f
+
+    return coord_values, force_values

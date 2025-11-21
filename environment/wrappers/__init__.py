@@ -6,3 +6,4 @@ from .composite_reward import CompositeRewardWrapper
 from .rescale_action import RescaleActionWrapper
 from .baby_steps import BabyStepsWrapper
 from .frame_skip import FrameSkipWrapper
+from .baby_walker import BabyWalkerWrapper, CoordinateLimitForce
