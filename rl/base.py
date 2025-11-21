@@ -68,23 +68,23 @@ class BaseRL(ABC):
         """
 
     @abstractmethod
-    def save(self, chkpt_file: Path) -> None:
+    def save(self, ckpt_file: Path) -> None:
         """
         Save model state to a checkpoint.
 
-        :param chkpt_file: Destination path.
-        :type chkpt_file: pathlib.Path
+        :param ckpt_file: Destination path.
+        :type ckpt_file: pathlib.Path
         :return: None
         :rtype: None
         """
 
     @abstractmethod
-    def load(self, chkpt_file: Path) -> None:
+    def load(self, ckpt_file: Path) -> None:
         """
         Load model state from a checkpoint.
 
-        :param chkpt_file: Source path.
-        :type chkpt_file: pathlib.Path
+        :param ckpt_file: Source path.
+        :type ckpt_file: pathlib.Path
         :return: None
         :rtype: None
         """

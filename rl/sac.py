@@ -38,8 +38,8 @@ class SACConfig:
     use_jit: bool = True
     train: bool = True
     name: str = "SAC"
-    load_chkpt: bool = False
-    chkpt_file: Optional[Path] = None
+    load_ckpt: bool = False
+    ckpt_file: Optional[Path] = None
 
 
 def default_target_entropy(action_space: tuple[int, ...]) -> int:
@@ -85,8 +85,8 @@ class SAC(BaseRL):
         train: bool = True,
         name: str = "SAC",
         # load model
-        load_chkpt: bool = False,
-        chkpt_file: Optional[Path] = None,
+        load_ckpt: bool = False,
+        ckpt_file: Optional[Path] = None,
         **kwargs,
     ):
         self.gamma = gamma
@@ -142,8 +142,8 @@ class SAC(BaseRL):
         self.total_steps = 0
 
         # load checkpoint before jit compile
-        if load_chkpt and chkpt_file:
-            self.load(chkpt_file)
+        if load_ckpt and ckpt_file:
+            self.load(ckpt_file)
         if self.use_jit:
             self._jit_compile()
 
@@ -346,12 +346,12 @@ class SAC(BaseRL):
             "q": q.detach().cpu(),
         }
 
-    def save(self, chkpt_file):
+    def save(self, ckpt_file):
         """
         Save model state to a checkpoint.
 
-        :param chkpt_file: Destination path.
-        :type chkpt_file: pathlib.Path
+        :param ckpt_file: Destination path.
+        :type ckpt_file: pathlib.Path
         :return: None
         :rtype: None
         """
@@ -361,27 +361,33 @@ class SAC(BaseRL):
                 "Q1": self.Q1.state_dict(),
                 "Q2": self.Q2.state_dict(),
                 "log_alpha": self.log_alpha.detach().cpu(),
+                "actor_optim": self.actor_optim.state_dict(),
+                "Q_optim": self.Q_optim.state_dict(),
+                "alpha_optim": self.alpha_optim.state_dict(),
                 "total_steps": self.total_steps,
             },
-            chkpt_file,
+            ckpt_file,
         )
 
-    def load(self, chkpt_file):
+    def load(self, ckpt_file):
         """
         Load model state from a checkpoint.
 
-        :param chkpt_file: Source path.
-        :type chkpt_file: pathlib.Path
+        :param ckpt_file: Source path.
+        :type ckpt_file: pathlib.Path
         :return: None
         :rtype: None
         """
-        chkpt = torch.load(chkpt_file)
-        self.actor.load_state_dict(chkpt["actor"])
-        self.Q1.load_state_dict(chkpt["Q1"])
-        self.Q2.load_state_dict(chkpt["Q2"])
+        ckpt = torch.load(ckpt_file)
+        self.actor.load_state_dict(ckpt["actor"])
+        self.Q1.load_state_dict(ckpt["Q1"])
+        self.Q2.load_state_dict(ckpt["Q2"])
         # required because log_alpha is saved as a tensor
-        self.log_alpha.data.copy_(chkpt["log_alpha"].to(self.device))
-        self.total_steps = chkpt["total_steps"]
+        self.log_alpha.data.copy_(ckpt["log_alpha"].to(self.device))
+        self.actor_optim.load_state_dict(ckpt["actor_optim"])
+        self.Q_optim.load_state_dict(ckpt["Q_optim"])
+        self.alpha_optim.load_state_dict(ckpt["alpha_optim"])
+        self.total_steps = ckpt["total_steps"]
 
     def log_params(self, *, prefix: str = "agent/") -> None:
         """
@@ -448,6 +454,6 @@ class SAC(BaseRL):
             use_jit=cfg.use_jit,
             train=cfg.train,
             name=cfg.name,
-            load_chkpt=cfg.load_chkpt,
-            chkpt_file=cfg.chkpt_file,
+            load_ckpt=cfg.load_ckpt,
+            ckpt_file=cfg.ckpt_file,
         )
