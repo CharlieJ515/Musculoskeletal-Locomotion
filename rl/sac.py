@@ -112,7 +112,6 @@ class SAC(BaseRL):
         self.Q2_target = critic_net(self.state_dim, self.action_dim, self.reward_dim)
         self.to(self.device)
         self._hard_update()
-        self.train(train)
         if self.use_jit:
             self._jit_compile()
 
@@ -126,7 +125,7 @@ class SAC(BaseRL):
             weight_decay=self.weight_decay,
         )
 
-        # load checkpoint before jit compile
+        self.train(train)
         if load_ckpt and ckpt_file:
             self.load(ckpt_file)
 
