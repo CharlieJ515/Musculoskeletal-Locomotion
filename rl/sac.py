@@ -43,16 +43,6 @@ class SACConfig:
 
 
 def default_target_entropy(action_space: tuple[int, ...]) -> int:
-    """
-    Compute the default target entropy for a given action space.
-    The default target entropy is defined as the negative product
-    of all dimensions in the action space.
-
-    :param action_space: Action space
-    :type action_space: tuple[int, ...]
-    :return: Default target entropy
-    :rtype: int
-    """
     from functools import reduce
     import operator
 
@@ -144,15 +134,6 @@ class SAC(BaseRL):
             self._jit_compile()
 
     def _jit_compile(self):
-        """
-        Compile model submodules using JIT.
-
-        This method prepares and optimizes sub-components (e.g., actor,
-        critic networks) for faster inference or training.
-
-        :return: None
-        :rtype: None
-        """
         # sampling used in actor is not allowed on jit compilation
         # self.actor = torch.jit.script(self.actor)
         self.Q1 = torch.jit.script(self.Q1)
@@ -163,24 +144,12 @@ class SAC(BaseRL):
 
     @torch.no_grad()
     def select_action(self, state: torch.Tensor) -> torch.Tensor:
-        """
-        Compute actions from the current state without gradient tracking.
-
-        :param state: Observation batch. Shape: (N, *obs_shape)
-        :type state: torch.Tensor
-        :return: Actions. Shape: (N, *action_space)
-        :rtype: torch.Tensor
-        """
         action, _ = self.actor(state, deterministic=not self._train)
 
         return action
 
     @torch.no_grad()
     def _hard_update(self) -> None:
-        """
-        Hard-update target network parameters:
-            θ_target ← θ_source
-        """
         # copy weights
         self.Q1_target.load_state_dict(self.Q1.state_dict())
         self.Q2_target.load_state_dict(self.Q2.state_dict())
@@ -190,10 +159,6 @@ class SAC(BaseRL):
 
     @torch.no_grad()
     def _soft_update(self) -> None:
-        """
-        Soft-update target network parameters:
-            θ_target ← τ * θ_source + (1 - τ) * θ_target
-        """
         # Q1
         for target_param, source_param in zip(
             self.Q1_target.parameters(), self.Q1.parameters()
@@ -206,22 +171,6 @@ class SAC(BaseRL):
             target_param.data.lerp_(source_param.data, self.tau)
 
     def update(self, transition: TransitionBatch) -> dict[str, Any]:
-        """
-        Perform a full SAC update step.
-
-        This method updates alpha, critic, and (periodically) the actor
-        using the provided transition batch.
-        This method does **not** perform any sampling from the replay buffer;
-        it expects the caller to provide the batch (e.g., sampled externally).
-
-        :param transition: Transition batch for update.
-        :type transition: TransitionBatch
-        :return: Dictionary of scalar metrics aggregated from all update steps:
-                 - metrics from :meth:`_update_alpha`
-                 - metrics from :meth:`_update_critic`
-                 - metrics from :meth:`_update_actor` (if the actor was updated at this step)
-        :rtype: Dict[str, float]
-        """
         metrics = {}
         alpha_metrics = self._update_alpha(transition)
         metrics["alpha"] = alpha_metrics
@@ -238,18 +187,6 @@ class SAC(BaseRL):
         return metrics
 
     def _update_alpha(self, transition: TransitionBatch) -> dict[str, float]:
-        """
-        Update the temperature parameter (alpha).
-
-        :param transition: Transition batch for update.
-        :type transition: TransitionBatch
-        :return: Dictionary of scalar metrics including:
-                 - ``alpha``: current temperature value.
-                 - ``sample_entropy``: estimated policy entropy
-                   (negative mean log-probability of sampled actions).
-                 - ``alpha_loss``: loss for the alpha update.
-        :rtype: Dict[str, float]
-        """
         s, a, r, ns, done = transition.unpack()
         new_action, log_prob = self.actor(s)
 
@@ -269,15 +206,6 @@ class SAC(BaseRL):
         }
 
     def _update_critic(self, transition: TransitionBatch) -> dict[str, Any]:
-        """
-        Update the critic (Q-function) networks.
-
-        :param transition: Transition batch for update.
-        :type transition: TransitionBatch
-        :return: Dictionary of scalar metrics including:
-                 - ``critic_loss``: loss for the critic update.
-        :rtype: Dict[str, float]
-        """
         s, a, r, ns, done = transition.unpack()
 
         # alpha is constant
@@ -311,15 +239,6 @@ class SAC(BaseRL):
         }
 
     def _update_actor(self, transition: TransitionBatch) -> dict[str, Any]:
-        """
-        Update the policy (actor) network.
-
-        :param transition: Transition batch for update.
-        :type transition: TransitionBatch
-        :return: Dictionary of scalar metrics including:
-                 - ``actor_loss``: loss for the actor update.
-        :rtype: Dict[str, float]
-        """
         s, a, r, ns, done = transition.unpack()
         alpha = self.log_alpha.detach().exp()
 
@@ -343,20 +262,17 @@ class SAC(BaseRL):
         }
 
     def save(self, ckpt_file):
-        """
-        Save model state to a checkpoint.
-
-        :param ckpt_file: Destination path.
-        :type ckpt_file: pathlib.Path
-        :return: None
-        :rtype: None
-        """
         torch.save(
             {
+                # networks
                 "actor": self.actor.state_dict(),
                 "Q1": self.Q1.state_dict(),
                 "Q2": self.Q2.state_dict(),
                 "log_alpha": self.log_alpha.detach().cpu(),
+                # targets
+                "Q1_target": self.Q1_target.state_dict(),
+                "Q2_target": self.Q2_target.state_dict(),
+                # optimizers
                 "actor_optim": self.actor_optim.state_dict(),
                 "Q_optim": self.Q_optim.state_dict(),
                 "alpha_optim": self.alpha_optim.state_dict(),
@@ -366,43 +282,23 @@ class SAC(BaseRL):
         )
 
     def load(self, ckpt_file):
-        """
-        Load model state from a checkpoint.
-
-        :param ckpt_file: Source path.
-        :type ckpt_file: pathlib.Path
-        :return: None
-        :rtype: None
-        """
         ckpt = torch.load(ckpt_file)
+
         self.actor.load_state_dict(ckpt["actor"])
         self.Q1.load_state_dict(ckpt["Q1"])
         self.Q2.load_state_dict(ckpt["Q2"])
-        # required because log_alpha is saved as a tensor
         self.log_alpha.data.copy_(ckpt["log_alpha"].to(self.device))
+
+        self.Q1_target.load_state_dict(ckpt["Q1_target"])
+        self.Q2_target.load_state_dict(ckpt["Q2_target"])
+
         self.actor_optim.load_state_dict(ckpt["actor_optim"])
         self.Q_optim.load_state_dict(ckpt["Q_optim"])
         self.alpha_optim.load_state_dict(ckpt["alpha_optim"])
+
         self.total_steps = ckpt["total_steps"]
 
     def log_params(self, *, prefix: str = "agent/") -> None:
-        """
-        Log agent hyperparameters to the active MLflow run.
-
-        This method records the agent's key configuration values
-        (e.g., discount factor, network dimensions, optimizer settings)
-        as parameters in the current MLflow run.
-        Note that it **does not** log any checkpoint file that may
-        have been loaded at initialization; such artifacts should be
-        logged at a higher level (e.g., in the training script).
-
-        :param prefix: String prefix added to all parameter names
-                       to group them in MLflow (e.g., ``"agent/"``).
-        :type prefix: str
-        :raises RuntimeError: If no active MLflow run is found.
-        :return: None
-        :rtype: None
-        """
         if not mlflow.active_run():
             raise RuntimeError(
                 "No active MLflow run found. Call mlflow.start_run() first."
