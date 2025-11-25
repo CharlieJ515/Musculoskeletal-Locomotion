@@ -88,3 +88,6 @@ class BaseRL(ABC):
         :return: None
         :rtype: None
         """
+
+    @abstractmethod
+    def to(self, device: torch.device, non_blocking: bool = True) -> None: ...

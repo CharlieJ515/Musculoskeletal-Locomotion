@@ -122,11 +122,7 @@ class SAC(BaseRL):
         self.Q1_target = critic_net(self.state_dim, self.action_dim, self.reward_dim)
         self.Q2_target = critic_net(self.state_dim, self.action_dim, self.reward_dim)
         # move networks to device
-        self.actor.to(self.device)
-        self.Q1.to(self.device)
-        self.Q2.to(self.device)
-        self.Q1_target.to(self.device)
-        self.Q2_target.to(self.device)
+        self.to(self.device)
         self._hard_update()
 
         # Network Optimizers
@@ -457,3 +453,10 @@ class SAC(BaseRL):
             load_ckpt=cfg.load_ckpt,
             ckpt_file=cfg.ckpt_file,
         )
+
+    def to(self, device: torch.device, non_blocking: bool = True):
+        self.actor.to(device, non_blocking=non_blocking)
+        self.Q1.to(device, non_blocking=non_blocking)
+        self.Q2.to(device, non_blocking=non_blocking)
+        self.Q1_target.to(device, non_blocking=non_blocking)
+        self.Q2_target.to(device, non_blocking=non_blocking)
