@@ -1,15 +1,16 @@
-from typing import cast
+from typing import cast, Literal
 from pathlib import Path
 from dataclasses import dataclass
 
 import mlflow
-import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import gymnasium as gym
-import opensim
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from environment.models import gait14dof22_path
 from environment.osim import OsimEnv
@@ -33,17 +34,11 @@ from environment.wrappers import (
     BabyWalkerWrapper,
     CoordinateLimitForce,
 )
-from rl.sac import SAC, default_target_entropy, SACConfig
+from rl.sac import SAC, SACConfig
 from rl.replay_buffer.replay_buffer import ReplayBuffer, ReplayBufferConfig
 from rl.transition import TransitionBatch
 from models.shallow_mlp import MLPActor, MLPCritic
-from analysis.mlflow_utils.attempt import tag_attempt
-from analysis.tensorboard_utils.distribution import (
-    log_weight_hist,
-    log_grad_hist,
-    log_rewards,
-    log_preds,
-)
+from analysis.tensorboard_utils.distribution import log_rewards, log_preds
 from utils.tmp_dir import get_tmp, clear_tmp
 from utils.save import save_ckpt
 from deprecated.gamma_action_sample import random_action_gamma
@@ -63,6 +58,7 @@ class TrainConfig:
     pose: Pose
     num_env: int
     reward_key: list[str]
+    mp_context: Literal["spawn", "fork", "forkserver"]
 
     def log_params(self):
         mlflow.log_params(
@@ -87,7 +83,7 @@ def evaluate(
     pose: Pose,
     agent: SAC,
     step: int,
-    episodes: int = 5,
+    episodes: int,
 ):
     active_run = mlflow.active_run()
     active_run_name = active_run.data.tags.get("mlflow.runName")  # type: ignore[reportOptionalMemberAccess]
@@ -228,7 +224,7 @@ def create_env(model: Path, pose: Pose) -> gym.Env:
     #     ],
     # )
     reward_components = {
-        "alive_reward": AliveReward(1.0),
+        "alive_reward": AliveReward(0.1),
         "velocity_reward": VelocityReward(1.0),
         "energy_reward": EnergyReward(1.0),
         # "smoothness_reward": SmoothnessReward(6.0),
@@ -268,18 +264,14 @@ def main(
     cfg: TrainConfig,
     sac_cfg: SACConfig,
     rb_cfg: ReplayBufferConfig,
-    writer: SummaryWriter,
 ):
-
-    mlflow.log_params(
-        {
-            "env_id": "OsimEnv",
-        }
-    )
     env = gym.vector.AsyncVectorEnv(
         [lambda: create_env(cfg.model, cfg.pose) for _ in range(cfg.num_env)],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
+        context=cfg.mp_context,
     )
+    # create writer after creating child processes
+    writer = get_writer()
 
     # SAC hyperparams
     agent = SAC.from_config(sac_cfg)
@@ -289,7 +281,7 @@ def main(
     rb = ReplayBuffer.from_config(rb_cfg)
     rb.log_params(prefix="buffer/")
 
-    # Training loop
+    # Random Exploration
     s_np, infos = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
@@ -321,6 +313,7 @@ def main(
         s_np = s_next_np
         episode_start = np.logical_or(terminated, truncated)
 
+    # Training
     agent.train()
     s_np, info = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
@@ -398,7 +391,6 @@ def main(
 
     # Save checkpoint
     save_ckpt(agent, "sac_osim.pt")
-
     env.close()
 
 
@@ -410,7 +402,7 @@ if __name__ == "__main__":
         total_steps=1_000_000,
         start_random=100,
         batch_size=256,
-        eval_interval=10_000,
+        eval_interval=3_000,
         eval_episodes=1,
         log_interval=20,
         seed=42,
@@ -425,6 +417,7 @@ if __name__ == "__main__":
             # "head_stability_reward",
             "footstep_reward",
         ],
+        mp_context="spawn",
     )
 
     temp_env = create_env(cfg.model, cfg.pose)
@@ -441,6 +434,8 @@ if __name__ == "__main__":
         target_entropy=-22,
         reward_dim=reward_shape,
         reward_weight=torch.ones(len(cfg.reward_key)),
+        load_ckpt=True,
+        ckpt_file=Path("./sac_osim_step18000.pt"),
     )
 
     rb_cfg = ReplayBufferConfig(
@@ -450,15 +445,14 @@ if __name__ == "__main__":
         reward_shape=reward_shape,
     )
 
-    writer = get_writer()
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
-        "SAC-Osim6",
-        "simple sac",
+        "SAC-Osim7",
+        "sac1",
     )
 
     try:
-        main(cfg, sac_cfg, rb_cfg, writer)
+        main(cfg, sac_cfg, rb_cfg)
     finally:
         mlflow.end_run()  # mlflow.end_run is idempotent
         clear_tmp()
