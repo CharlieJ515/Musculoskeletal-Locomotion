@@ -282,7 +282,7 @@ class SAC(BaseRL):
         )
 
     def load(self, ckpt_file):
-        ckpt = torch.load(ckpt_file)
+        ckpt = torch.load(ckpt_file, map_location=self.device)
 
         self.actor.load_state_dict(ckpt["actor"])
         self.Q1.load_state_dict(ckpt["Q1"])
@@ -356,3 +356,14 @@ class SAC(BaseRL):
         self.Q2.to(device, non_blocking=non_blocking)
         self.Q1_target.to(device, non_blocking=non_blocking)
         self.Q2_target.to(device, non_blocking=non_blocking)
+
+    def train(self, mode: bool = True) -> None:
+        self.actor.train(mode)
+        self.Q1.train(mode)
+        self.Q2.train(mode)
+
+        super().train(mode)
+
+        # unnecessary but just to be sure
+        self.Q1_target.eval()
+        self.Q2_target.eval()
