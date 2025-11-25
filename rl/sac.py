@@ -77,7 +77,6 @@ class SAC(BaseRL):
         # load model
         load_ckpt: bool = False,
         ckpt_file: Optional[Path] = None,
-        **kwargs,
     ):
         self.gamma = gamma
         self.state_dim = state_dim
@@ -93,8 +92,8 @@ class SAC(BaseRL):
         )
         self.reward_weight = reward_weight.to(self.device)
         self.use_jit = use_jit
-        self.train(train)
         self.name = name
+        self.total_steps = 0
 
         # alpha
         self.target_entropy = target_entropy
@@ -111,9 +110,11 @@ class SAC(BaseRL):
         self.Q2 = critic_net(self.state_dim, self.action_dim, self.reward_dim)
         self.Q1_target = critic_net(self.state_dim, self.action_dim, self.reward_dim)
         self.Q2_target = critic_net(self.state_dim, self.action_dim, self.reward_dim)
-        # move networks to device
         self.to(self.device)
         self._hard_update()
+        self.train(train)
+        if self.use_jit:
+            self._jit_compile()
 
         # Network Optimizers
         self.actor_optim = torch.optim.Adam(
@@ -125,19 +126,17 @@ class SAC(BaseRL):
             weight_decay=self.weight_decay,
         )
 
-        self.total_steps = 0
-
         # load checkpoint before jit compile
         if load_ckpt and ckpt_file:
             self.load(ckpt_file)
-        if self.use_jit:
-            self._jit_compile()
 
     def _jit_compile(self):
         # sampling used in actor is not allowed on jit compilation
         # self.actor = torch.jit.script(self.actor)
         self.Q1 = torch.jit.script(self.Q1)
         self.Q2 = torch.jit.script(self.Q2)
+        self.Q1_target = torch.jit.script(self.Q1_target)
+        self.Q2_target = torch.jit.script(self.Q2_target)
 
     def get_alpha(self):
         return self.log_alpha.exp().item()
