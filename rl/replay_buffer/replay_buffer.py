@@ -5,12 +5,13 @@ from typing import Union
 
 import torch
 import mlflow
+import numpy as np
 
 from rl.replay_buffer.base import BaseReplayBuffer
 from rl.transition import Transition, TransitionBatch
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ReplayBufferConfig:
     capacity: int
     obs_shape: tuple[int, ...]
@@ -24,10 +25,6 @@ class ReplayBufferConfig:
 
 
 class ReplayBuffer(BaseReplayBuffer):
-    """
-    Plain uniform replay buffer with ring-buffer storage and uniform sampling.
-    """
-
     def __init__(
         self,
         capacity: int,
@@ -41,68 +38,43 @@ class ReplayBuffer(BaseReplayBuffer):
         reward_dtype: torch.dtype = torch.float32,
         name: str = "ReplayBuffer",
     ) -> None:
-        """
-        Initialize the replay buffer with preallocated storage.
-
-        :param capacity: Maximum number of transitions the buffer can hold.
-        :param obs_shape: Shape of a single observation.
-        :param action_shape: Shape of a single action.
-        :param reward_shape: Shape of a single reward (default: scalar (1,)).
-        :param obs_dtype: Observations data type.
-        :param action_dtype: Actions data type.
-        :param reward_dtype: Rewards data type.
-        :param device: Device to store data.
-        """
         self.capacity = int(capacity)
         self._device = device
         self.name = name
 
         # storage
-        self._obs = torch.empty(
-            (capacity, *obs_shape), dtype=obs_dtype, device=self._device
+        self._obs = torch.zeros(
+            (capacity, *obs_shape),
+            dtype=obs_dtype,
+            device=self._device,
         )
-        self._actions = torch.empty(
-            (capacity, *action_shape), dtype=action_dtype, device=self._device
+        self._actions = torch.zeros(
+            (capacity, *action_shape),
+            dtype=action_dtype,
+            device=self._device,
         )
-        self._rewards = torch.empty(
-            (capacity, *reward_shape), dtype=reward_dtype, device=self._device
+        self._rewards = torch.zeros(
+            (capacity, *reward_shape),
+            dtype=reward_dtype,
+            device=self._device,
         )
-        self._next_obs = torch.empty(
-            (capacity, *obs_shape), dtype=obs_dtype, device=self._device
+        self._next_obs = torch.zeros(
+            (capacity, *obs_shape),
+            dtype=obs_dtype,
+            device=self._device,
         )
-        self._dones = torch.empty((capacity,), dtype=torch.bool, device=self._device)
+        self._dones = torch.zeros((capacity,), dtype=torch.bool, device=self._device)
 
         # ring buffer pointers
         self._ptr = 0
         self._size = 0
 
-        # cached shapes
+        # shapes
         self._obs_shape = obs_shape
         self._action_shape = action_shape
         self._reward_shape = reward_shape
 
-    # Accept both Transition and TransitionBatch
     def add(self, transition: Union[Transition, TransitionBatch]) -> None:
-        """
-        Add one or more transitions to the buffer.
-
-        :param transition: Either a single Transition or a TransitionBatch.
-                           Shapes:
-                             If Transition:
-                               - obs: (*obs_shape,)
-                               - action: (*action_shape,)
-                               - reward: (*reward_shape)
-                               - next_obs: (*obs_shape,)
-                               - done: ()
-                             If TransitionBatch:
-                               - obs: (B, *obs_shape)
-                               - actions: (B, *action_shape)
-                               - rewards: (B, *reward_shape)
-                               - next_obs: (B, *obs_shape)
-                               - dones: (B,)
-        :type transition: Union[Transition, TransitionBatch]
-        """
-        # normalize to batch
         batch = (
             transition.to_batch() if isinstance(transition, Transition) else transition
         )
@@ -159,27 +131,28 @@ class ReplayBuffer(BaseReplayBuffer):
         self._size = min(self._size + B, self.capacity)
 
     def sample(self, batch_size: int, *, pin_memory: bool = True) -> TransitionBatch:
-        """
-        Sample a batch of transitions from the buffer.
-
-        :param batch_size: Number of transitions to sample.
-        :type batch_size: int
-        :return: A batch of transitions with tensors already stacked.
-                 Shapes:
-                   - obs: (B, *obs_shape)
-                   - actions: (B, *action_shape)
-                   - rewards: (B, *reward_shape)
-                   - next_obs: (B, *obs_shape)
-                   - dones: (B,)
-        :rtype: TransitionBatch
-        """
         if self._size == 0:
             raise ValueError("Cannot sample from an empty buffer.")
         if batch_size <= 0:
             raise ValueError(f"batch_size must be positive, got {batch_size}")
 
         batch_size = min(batch_size, self._size)
-        idx = torch.randint(0, self._size, (batch_size,), device=self._device)
+        idx = torch.randint(
+            0, self._size, (batch_size,), dtype=torch.long, device=self._device
+        )
+
+        batch = self.sample_index(idx, pin_memory=pin_memory)
+        return batch
+
+    def sample_index(
+        self,
+        index: torch.Tensor | np.ndarray,
+        *,
+        pin_memory: bool = True,
+    ) -> TransitionBatch:
+        idx = torch.as_tensor(index, dtype=torch.long, device=self._device)
+        if idx.max() >= self._size:
+            raise ValueError()
 
         if pin_memory and self._device.type == "cuda":
             warnings.warn(
@@ -188,6 +161,7 @@ class ReplayBuffer(BaseReplayBuffer):
             )
 
         if pin_memory and self._device.type == "cpu":
+            batch_size = len(index)
             obs = torch.empty(
                 (batch_size, *self._obs_shape), dtype=self._obs.dtype, pin_memory=True
             )
@@ -220,51 +194,27 @@ class ReplayBuffer(BaseReplayBuffer):
             next_obs = self._next_obs.index_select(0, idx)
             dones = self._dones.index_select(0, idx)
 
-        new = TransitionBatch(
+        batch = TransitionBatch(
             obs=obs,
             actions=actions,
             rewards=rewards,
             next_obs=next_obs,
             dones=dones,
+            indices=idx,
         )
-        return new
+        return batch
 
     def __len__(self) -> int:
-        """
-        :return: Current number of stored transitions.
-        :rtype: int
-        """
         return self._size
 
     def clear(self) -> None:
-        """
-        Reset buffer (remove all stored transitions).
-        """
         self._ptr = 0
         self._size = 0
 
     def device(self) -> torch.device:
-        """
-        :return: Device on which the buffer’s data is stored.
-        :rtype: torch.device
-        """
         return self._device
 
     def log_params(self, *, prefix: str = "buffer/") -> None:
-        """
-        Log replay buffer configuration to the active MLflow run.
-
-        This method records key configuration parameters of the replay buffer
-        (e.g., capacity, observation/action/reward shapes, and device)
-        as parameters in the current MLflow run.
-
-        :param prefix: String prefix added to all parameter names
-                       to group them in MLflow (e.g., ``"buffer/"``).
-        :type prefix: str
-        :raises RuntimeError: If no active MLflow run is found.
-        :return: None
-        :rtype: None
-        """
         if not mlflow.active_run():
             raise RuntimeError(
                 "No active MLflow run found. Call mlflow.start_run() first."
@@ -278,19 +228,11 @@ class ReplayBuffer(BaseReplayBuffer):
                 f"{p}obs_shape": self._obs_shape,
                 f"{p}action_shape": self._action_shape,
                 f"{p}reward_shape": self._reward_shape,
-                f"{p}device": self.device,
+                f"{p}device": self._device,
             }
         )
 
     def all(self, *, pin_memory: bool = True) -> TransitionBatch:
-        """
-        Return all currently stored transitions as a single TransitionBatch.
-
-        :param pin_memory: Whether to pin memory for faster GPU transfer (only effective on CPU).
-        :type pin_memory: bool
-        :return: TransitionBatch containing all stored transitions.
-        :rtype: TransitionBatch
-        """
         if self._size == 0:
             raise ValueError("Replay buffer is empty. Nothing to return.")
 

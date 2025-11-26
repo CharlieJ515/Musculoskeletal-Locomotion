@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import torch
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Transition:
     """
     A single transition stored in the replay buffer.
@@ -25,15 +25,24 @@ class Transition:
     next_obs: torch.Tensor
     done: torch.Tensor
 
+    index: torch.Tensor | None = None
+    weight: torch.Tensor | None = None
+
     def __post_init__(self):
-        # check device
         dev = self.obs.device
+        name: str
+        tensor: torch.Tensor | None
         for name, tensor in [
             ("action", self.action),
             ("reward", self.reward),
             ("next_obs", self.next_obs),
             ("done", self.done),
+            ("index", self.index),
+            ("weight", self.weight),
         ]:
+            if tensor is None:
+                continue
+            # check device
             if tensor.device != dev:
                 raise ValueError(
                     f"Device mismatch: field '{name}' is on {tensor.device}, "
@@ -45,13 +54,25 @@ class Transition:
                 f"'next_obs' shape (excluding batch) {tuple(self.next_obs.shape)} "
                 f"must match 'obs' shape {tuple(self.obs.shape)}"
             )
-        if self.reward.dim() < 1:
+
+        for name, tensor in [
+            ("reward", self.reward),
+            ("weight", self.weight),
+        ]:
+            if tensor is None or tensor.dim() >= 1:
+                continue
             raise ValueError(
-                f"'reward' must be at least 1-D (e.g., shape (1,)), got {tuple(self.reward.shape)}"
+                f"'reward' must be at least 1-D (e.g., shape (1,)), got {tuple(tensor.shape)}"
             )
-        if self.done.dim() != 0:
+
+        for name, tensor in [
+            ("done", self.done),
+            ("index", self.index),
+        ]:
+            if tensor is None or tensor.dim() == 0:
+                continue
             raise ValueError(
-                f"'done' must be a scalar tensor with shape (), got {tuple(self.done.shape)}"
+                f"'{name}' must be a scalar tensor with shape (), got {tuple(tensor.shape)}"
             )
 
     @property
@@ -98,12 +119,25 @@ class Transition:
         if device == self.device:
             return self
 
+        index = (
+            self.index.to(device, non_blocking=non_blocking)
+            if self.index is not None
+            else None
+        )
+        weight = (
+            self.weight.to(device, non_blocking=non_blocking)
+            if self.weight is not None
+            else None
+        )
+
         new = Transition(
             obs=self.obs.to(device, non_blocking=non_blocking),
             action=self.action.to(device, non_blocking=non_blocking),
             reward=self.reward.to(device, non_blocking=non_blocking),
             next_obs=self.next_obs.to(device, non_blocking=non_blocking),
             done=self.done.to(device, non_blocking=non_blocking),
+            index=index,
+            weight=weight,
         )
         return new
 
@@ -123,12 +157,17 @@ class Transition:
         :return: TransitionBatch with leading dimension 1.
         :rtype: TransitionBatch
         """
+        indices = self.index.unsqueeze(0) if self.index is not None else None
+        weights = self.weight.unsqueeze(0) if self.weight is not None else None
+
         batch = TransitionBatch(
             obs=self.obs.unsqueeze(0),
             actions=self.action.unsqueeze(0),
             rewards=self.reward.unsqueeze(0),
             next_obs=self.next_obs.unsqueeze(0),
             dones=self.done.unsqueeze(0),
+            indices=indices,
+            weights=weights,
         )
         return batch
 
@@ -152,78 +191,73 @@ class Transition:
         return (self.obs, self.action, self.reward, self.next_obs, self.done)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class TransitionBatch:
-    """
-    A batch of transitions sampled from the replay buffer.
-
-    :param obs: Observations at time t. Shape: (B, *obs_shape)
-    :type obs: torch.Tensor
-    :param actions: Actions taken at time t. Shape: (B, *act_shape)
-    :type actions: torch.Tensor
-    :param rewards: Rewards received after taking the actions. Shape: (B, *reward_shape)
-    :type rewards: torch.Tensor
-    :param next_obs: Next observations at time t+1. Shape: (B, *obs_shape)
-    :type next_obs: torch.Tensor
-    :param dones: Episode termination flags. Shape: (B,)
-    :type dones: torch.Tensor
-    """
-
     obs: torch.Tensor
     actions: torch.Tensor
     rewards: torch.Tensor
     next_obs: torch.Tensor
     dones: torch.Tensor
 
+    indices: torch.Tensor | None = None
+    weights: torch.Tensor | None = None
+
     def __post_init__(self):
-        """
-        Sanity-check that all tensors reside on the same device.
-        """
-        dev = self.obs.device
+        # check device
+        device = self.obs.device
+        B = self.obs.shape[0]
+        name: str
+        tensor: torch.Tensor | None
         for name, tensor in [
             ("actions", self.actions),
             ("rewards", self.rewards),
             ("next_obs", self.next_obs),
             ("dones", self.dones),
+            ("indices", self.indices),
+            ("weights", self.weights),
         ]:
-            if tensor.device != dev:
+            if tensor is None:
+                continue
+            # check device
+            if tensor.device != device:
                 raise ValueError(
                     f"Device mismatch: field '{name}' is on {tensor.device}, "
-                    f"but 'obs' is on {dev}."
+                    f"but 'obs' is on {device}."
                 )
-
-        B = self.obs.shape[0]
-        for name, tensor in [
-            ("actions", self.actions),
-            ("rewards", self.rewards),
-            ("next_obs", self.next_obs),
-            ("dones", self.dones),
-        ]:
+            # check batch size
             if tensor.shape[0] != B:
                 raise ValueError(
                     f"Leading dim mismatch: '{name}' has B={tensor.shape[0]}, but obs has B={B}"
                 )
 
-        if self.next_obs.shape[1:] != self.obs.shape[1:]:
+        if self.next_obs.shape != self.obs.shape:
             raise ValueError(
                 f"'next_obs' shape (excluding batch) {tuple(self.next_obs.shape[1:])} "
                 f"must match 'obs' shape {tuple(self.obs.shape[1:])}"
             )
-        if self.rewards.dim() < 2:
+
+        for name, tensor in [
+            ("rewards", self.rewards),
+            ("weights", self.weights),
+        ]:
+            if tensor is None or tensor.dim() >= 2:
+                continue
             raise ValueError(
-                f"'rewards' must be at least 2-D (e.g., (B,1)), got {tuple(self.rewards.shape)}"
+                f"'rewards' must be at least 2-D (e.g., (B,1)), got {tuple(tensor.shape)}"
             )
-        if self.dones.dim() != 1:
+
+        for name, tensor in [
+            ("dones", self.dones),
+            ("indices", self.indices),
+        ]:
+            if tensor is None or tensor.dim() == 1:
+                continue
             raise ValueError(
-                f"'dones' must be 1-D with shape (B,), got {tuple(self.dones.shape)}"
+                f"'{name}' must be 1-D with shape (B,), got {tuple(tensor.shape)}"
             )
 
     def __len__(self) -> int:
-        """
-        :return: Batch length B (number of transitions).
-        :rtype: int
-        """
-        return int(self.obs.shape[0])
+        return self.obs.shape[0]
 
     @property
     def device(self) -> torch.device:
@@ -268,12 +302,25 @@ class TransitionBatch:
         if device == self.device:
             return self
 
+        indices = (
+            self.indices.to(device, non_blocking=non_blocking)
+            if self.indices is not None
+            else None
+        )
+        weights = (
+            self.weights.to(device, non_blocking=non_blocking)
+            if self.weights is not None
+            else None
+        )
+
         new = TransitionBatch(
             obs=self.obs.to(device, non_blocking=non_blocking),
             actions=self.actions.to(device, non_blocking=non_blocking),
             rewards=self.rewards.to(device, non_blocking=non_blocking),
             next_obs=self.next_obs.to(device, non_blocking=non_blocking),
             dones=self.dones.to(device, non_blocking=non_blocking),
+            indices=indices,
+            weights=weights,
         )
         return new
 
