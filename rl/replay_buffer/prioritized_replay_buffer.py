@@ -11,12 +11,12 @@ from rl.transition import Transition, TransitionBatch
 
 
 @dataclass(kw_only=True)
-class PrioritizedReplayConfig(ReplayBufferConfig):
+class PERConfig(ReplayBufferConfig):
     beta_frames: int
     alpha: float = 0.6
     beta_start: float = 0.4
     epsilon: float = 1e-5
-    name: str = "PrioritizedReplayBuffer"
+    name: str = "PrioritizedReplayBuffer/"
 
 
 class SumTree:
@@ -77,7 +77,7 @@ class SumTree:
         return self.tree[1]
 
 
-class PrioritizedReplayBuffer(ReplayBuffer):
+class PER(ReplayBuffer):
     def __init__(
         self,
         capacity: int,
@@ -93,7 +93,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         obs_dtype: torch.dtype = torch.float32,
         action_dtype: torch.dtype = torch.float32,
         reward_dtype: torch.dtype = torch.float32,
-        name: str = "PrioritizedReplayBuffer",
+        name: str = "PrioritizedReplayBuffer/",
     ) -> None:
         super().__init__(
             capacity=capacity,
@@ -193,7 +193,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             )
 
     @classmethod
-    def from_config(cls, cfg: "PrioritizedReplayConfig") -> "PrioritizedReplayBuffer":  # type: ignore
+    def from_config(cls, cfg: "PERConfig") -> "PER":  # type: ignore
         return cls(
             capacity=cfg.capacity,
             obs_shape=cfg.obs_shape,
