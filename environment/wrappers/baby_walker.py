@@ -6,13 +6,14 @@ import gymnasium as gym
 import numpy as np
 import opensim
 
-from environment.osim import OsimEnv, Observation
+from environment.osim import OsimEnv, Observation, OsimModel
+
 
 ActType = TypeVar("ActType")
 
 
 @dataclass
-class CoordinateLimitForce:
+class LimitForceConfig:
     coordinate_name: str
     upper_limit: float
     upper_stiffness: float
@@ -27,21 +28,31 @@ class BabyWalkerWrapper(gym.Wrapper[Observation, ActType, Observation, ActType])
     def __init__(
         self,
         env: gym.Env,
-        limits: list[CoordinateLimitForce],
+        limits: list[LimitForceConfig],
         *,
         reward_scale: float = 1.0,
+        decay_steps: float = 30_000,
     ):
         super().__init__(env)
         self.base_name = "baby_walker"
         self.reward_scale = reward_scale
-        self.limits: dict[str, CoordinateLimitForce] = {}
+        self.decay_steps = decay_steps
+        self.total_step = 0
+
+        self.limits: dict[str, LimitForceConfig] = {}
+        self.limit_index: dict[str, int] = {}
         self._inject_limits(limits)
 
     def _get_model(self) -> opensim.Model:
         base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
         return base_env.model
 
-    def _inject_limits(self, limits: list[CoordinateLimitForce]):
+    def _init_system(self):
+        base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
+        osim_model: OsimModel = base_env.osim_model
+        osim_model.init_system()
+
+    def _inject_limits(self, limits: list[LimitForceConfig]):
         model = self._get_model()
         force_set: opensim.ForceSet = model.getForceSet()
 
@@ -63,16 +74,16 @@ class BabyWalkerWrapper(gym.Wrapper[Observation, ActType, Observation, ActType])
 
             model.addForce(limit)
             self.limits[limit_name] = c
+            self.limit_index[limit_name] = force_set.getSize() - 1
 
         # restart to apply modifications
-        base_env: OsimEnv = self.unwrapped  # type: ignore[reportAssignmentType]
-        base_env.close()
-        base_env.osim_model.initSystem()
+        self._init_system()
 
     def step(
         self, action: ActType
     ) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
         obs, reward, terminated, truncated, info = self.env.step(action)
+        self.total_step += 1
 
         penalty = 0.0
         bodyweight = obs.norm_spec.mass * obs.norm_spec.g  # type: ignore
@@ -82,7 +93,7 @@ class BabyWalkerWrapper(gym.Wrapper[Observation, ActType, Observation, ActType])
             f = force_state[name]
 
             forces[name] = f
-            penalty += f / bodyweight
+            penalty += abs(f) / bodyweight
 
         info["baby_walker"] = {
             "penalty": penalty,
@@ -91,6 +102,40 @@ class BabyWalkerWrapper(gym.Wrapper[Observation, ActType, Observation, ActType])
 
         total_reward = float(reward) - penalty * self.reward_scale
         return obs, total_reward, terminated, truncated, info
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[Observation, dict[str, Any]]:
+        factor = 1.0
+        if self.decay_steps != 0:
+            progress = min(self.total_step / self.decay_steps, 1.0)
+            factor = max(factor - progress, 0.0)
+        self._update_stiffness(factor)
+
+        obs, info = self.env.reset(seed=seed, options=options)
+        return obs, info
+
+    def _update_stiffness(self, factor: float):
+        model = self._get_model()
+        force_set = model.getForceSet()
+
+        for name, cfg in self.limits.items():
+            index = self.limit_index[name]
+            force: opensim.Force = force_set.get(index)
+            limit_force: opensim.CoordinateLimitForce = (
+                opensim.CoordinateLimitForce.safeDownCast(force)
+            )
+
+            new_upper = cfg.upper_stiffness * factor
+            new_lower = cfg.lower_stiffness * factor
+
+            limit_force.set_upper_stiffness(new_upper)
+            limit_force.set_lower_stiffness(new_lower)
+
+        self._init_system()
 
 
 def plot_limit_force(
