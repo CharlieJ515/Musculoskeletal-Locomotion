@@ -79,8 +79,8 @@ class TD3(BaseRL):
         self.use_jit = use_jit
         self.name = name
 
-        self.actor = actor_net(self.state_dim, self.action_dim, self.max_action)
-        self.actor_target = actor_net(self.state_dim, self.action_dim, self.max_action)
+        self.actor = actor_net(self.state_dim, self.action_dim)
+        self.actor_target = actor_net(self.state_dim, self.action_dim)
 
         self.Q1 = critic_net(self.state_dim, self.action_dim, self.reward_dim)
         self.Q2 = critic_net(self.state_dim, self.action_dim, self.reward_dim)
