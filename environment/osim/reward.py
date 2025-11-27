@@ -11,7 +11,13 @@ from .action import Action
 class RewardComponent(ABC):
     @abstractmethod
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         pass
 
@@ -66,7 +72,13 @@ class VelocityReward(RewardComponent):
         self.scale = scale
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         vel = dataclasses.replace(obs.pelvis.vel, y=0)
         yaw = obs.pelvis.ang.y
@@ -83,7 +95,13 @@ class EnergyReward(RewardComponent):
         self.scale = scale
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         energy = 0.0
         for name, muscle in obs.muscle.items():
@@ -102,16 +120,22 @@ class SmoothnessReward(RewardComponent):
         self._prev_action = Action.from_opensim(model, state)
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         cost = 0
         for name in Action.muscle_order:
-            current_act = act[name]
+            current_act = action[name]
             prev_act = self._prev_action[name]
 
             cost += (current_act - prev_act) ** 2
         cost = cost / len(Action.muscle_order)
-        self._prev_action = act
+        self._prev_action = action
         return -cost * self.scale
 
 
@@ -129,7 +153,13 @@ class HeadStabilityReward(RewardComponent):
         self.ang_vel_scale = ang_vel_scale
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         """
         Head stability = -(acc_scale * linear acceleration^2 + ang_vel_scale * angular velocity^2)
@@ -142,16 +172,49 @@ class HeadStabilityReward(RewardComponent):
         return acc_cost
 
 
-class AliveReward(RewardComponent):
+class UprightReward(RewardComponent):
     __slots__ = ["scale"]
 
     def __init__(self, scale: float = 1.0):
         self.scale = scale
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model,
+        state,
+        obs: Observation,
+        action,
+        terminated,
+        truncated,
     ) -> float:
-        return self.scale
+        pitch = obs.pelvis.ang.x
+        roll = obs.pelvis.ang.z
+
+        penalty = pitch**2 + roll**2
+
+        return -penalty * self.scale
+
+
+class AliveReward(RewardComponent):
+    __slots__ = ["alive_reward", "failure_penalty"]
+
+    def __init__(self, alive_reward: float = 1.0, failure_penalty: float = -200.0):
+        self.alive_reward = alive_reward
+        self.failure_penalty = failure_penalty
+
+    def compute(
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
+    ) -> float:
+        if terminated and not truncated:
+            return self.failure_penalty
+
+        return self.alive_reward
 
 
 class FootImpactPenalty(RewardComponent):
@@ -165,7 +228,13 @@ class FootImpactPenalty(RewardComponent):
         self._prev_foot: Dict[str, FootState] = obs.foot
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         cost = 0.0
         current_foot = obs.foot
@@ -246,13 +315,19 @@ class CompositeReward:
             t.reset(model, state, obs)
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> Tuple[float, Dict[str, float]]:
         total = 0.0
         rewards: Dict[str, float] = {}
         for name, component in self.components.items():
             w = self.weights[name]
-            reward = component.compute(model, state, obs, act)
+            reward = component.compute(model, state, obs, action, terminated, truncated)
             total += w * reward
             rewards[name] = reward
         return float(total), rewards
@@ -278,7 +353,13 @@ class FootstepReward(RewardComponent):
         self._del_t = 0.0
 
     def compute(
-        self, model: opensim.Model, state: opensim.State, obs: Observation, act: Action
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
     ) -> float:
         self._del_t += self.stepsize
 
