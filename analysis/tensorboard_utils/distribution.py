@@ -49,6 +49,8 @@ def log_rewards(
         tag = f"{prefix}/env_{env_idx}"
         writer.add_scalars(tag, reward_dict, step)
 
+        break
+
 
 def log_preds(
     reward_key: list[str], pred: torch.Tensor, step: float, prefix: str = "train/q"
