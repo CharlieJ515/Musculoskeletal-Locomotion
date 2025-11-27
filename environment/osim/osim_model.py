@@ -39,7 +39,7 @@ class OsimModel:
         # Enable the visualizer
         self.visualize = visualize
         self._visualizer: Optional[psutil.Process] = None
-        self.initSystem()
+        self.init_system()
 
         self.integrator_accuracy = integrator_accuracy
         self.stepsize = stepsize
@@ -176,8 +176,9 @@ class OsimModel:
         for i in range(markerSet.getSize()):
             print(i, markerSet.get(i).getName())
 
-    def initSystem(self):
+    def init_system(self):
         if self.visualize:
+            self._close_visualizer()
             self._start_visualizer()
         else:
             self._init_state = self._model.initSystem()
@@ -199,7 +200,7 @@ class OsimModel:
         visualizer_pid = new_pids.pop()
         self._visualizer = psutil.Process(visualizer_pid)
 
-    def close(self):
+    def _close_visualizer(self):
         if self._visualizer is None:
             return
 
@@ -208,3 +209,6 @@ class OsimModel:
                 self._visualizer.terminate()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
+
+    def close(self):
+        self._close_visualizer()
