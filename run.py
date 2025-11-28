@@ -332,7 +332,7 @@ def main(
     env = gym.vector.AsyncVectorEnv(
         [
             lambda: create_env(cfg.model, cfg.pose, cfg.visualize)
-            for _ in range(cfg.num_env)
+            for i in range(cfg.num_env)
         ],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
         context=cfg.mp_context,
@@ -409,6 +409,23 @@ def main(
         rb.update_priorities(batch.indices, td_error)  # type: ignore
 
         s_next_np, r, terminated, truncated, info = env.step_wait()
+
+        nan_mask = np.isnan(s_next_np)
+        if nan_mask.any():
+            flat_mask = nan_mask.reshape(s_next_np.shape[0], -1)
+            env_has_nan = flat_mask.any(axis=1)
+            faulty_env_indices = np.where(env_has_nan)[0]
+
+            print(f"\n[Warning] NaN detected at step {t}")
+
+            for env_idx in faulty_env_indices:
+                print(f"  > Env Index (ID): {env_idx}")
+                print(f"    - Episode Start (Previous): {episode_start[env_idx]}")
+                print(f"    - Terminated (Current):     {terminated[env_idx]}")
+                print(f"    - Truncated (Current):      {truncated[env_idx]}")
+                print(f"    - NaN Count in Obs:         {np.sum(nan_mask[env_idx])}")
+
+            s_next_np[nan_mask] = 0.0
 
         if episode_start.all():
             s_np = s_next_np
