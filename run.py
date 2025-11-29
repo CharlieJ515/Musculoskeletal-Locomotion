@@ -1,7 +1,6 @@
 from typing import cast, Literal
 from pathlib import Path
 from dataclasses import dataclass
-from pprint import pprint
 
 import mlflow
 import torch
@@ -15,14 +14,12 @@ import matplotlib.pyplot as plt
 
 from environment.models import gait14dof22_path
 from environment.osim import OsimEnv
-from environment.osim.pose import Pose, get_bent_pose, get_forward_pose
+from environment.osim.pose import Pose, get_default_pose
 from environment.osim.reward import (
     CompositeReward,
     AliveReward,
     VelocityReward,
     EnergyReward,
-    SmoothnessReward,
-    HeadStabilityReward,
     UprightReward,
     FootstepReward,
 )
@@ -74,8 +71,15 @@ class TrainConfig:
                 "start_random": self.start_random,
                 "batch_size": self.batch_size,
                 "eval_interval": self.eval_interval,
-                "opensim_model": str(self.model),
+                "eval_episodes": self.eval_episodes,
+                "log_interval": self.log_interval,
                 "seed": self.seed,
+                "init_pose": self.pose.name,
+                "opensim_model": str(self.model),
+                "visualize": self.visualize,
+                "num_env": self.num_env,
+                "reward_key": self.reward_key,
+                "mp_context": self.mp_context,
             }
         )
 
@@ -91,6 +95,7 @@ def evaluate(
     agent: TD3,
     step: int,
     episodes: int,
+    reward_key: list[str],
 ):
     active_run = mlflow.active_run()
     active_run_name = active_run.data.tags.get("mlflow.runName")  # type: ignore[reportOptionalMemberAccess]
@@ -135,22 +140,14 @@ def evaluate(
             qmin = torch.min(q1, q2)
 
             metrics = {
-                "q1_pred/alive": float(q1[0]),
-                "q1_pred/velocity": float(q1[1]),
-                "q1_pred/energy": float(q1[2]),
-                "q1_pred/smoothness": float(q1[3]),
-                "q2_pred/alive": float(q2[0]),
-                "q2_pred/velocity": float(q2[1]),
-                "q2_pred/energy": float(q2[2]),
-                "q2_pred/smoothness": float(q2[3]),
-                "min/alive": float(qmin[0]),
-                "min/velocity": float(qmin[1]),
-                "min/energy": float(qmin[2]),
-                "min/smoothness": float(qmin[3]),
                 "cumulative_return": float(ep_ret),
                 "discounted_return": float(ep_disc),
                 **info["rewards"],
             }
+            for i, key in enumerate(reward_key):
+                metrics[f"q1_pred/{key}"] = q1[i]
+                metrics[f"q2_pred/{key}"] = q2[i]
+                metrics[f"min/{key}"] = qmin[i]
             mlflow.log_metrics(metrics, step=ep_step)
             all_actions.append(a_np)
 
@@ -235,8 +232,6 @@ def create_env(model: Path, pose: Pose, visualize: bool) -> gym.Env:
         "alive_reward": AliveReward(0.1, -200),
         "velocity_reward": VelocityReward(1.0),
         "energy_reward": EnergyReward(1.0),
-        # "smoothness_reward": SmoothnessReward(6.0),
-        # "head_stability_reward": HeadStabilityReward(acc_scale=0.01),
         "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
         "upright_reward": UprightReward(1.0),
     }
@@ -244,8 +239,6 @@ def create_env(model: Path, pose: Pose, visualize: bool) -> gym.Env:
         "alive_reward": 1.0,
         "velocity_reward": 1.0,
         "energy_reward": 1.0,
-        # "smoothness_reward": 1.0,
-        # "head_stability_reward": 1.0,
         "footstep_reward": 1.0,
         "upright_reward": 1.0,
     }
@@ -255,7 +248,6 @@ def create_env(model: Path, pose: Pose, visualize: bool) -> gym.Env:
     env = SimpleEnvWrapper(env)
     env = gym.wrappers.TimeAwareObservation(env, flatten=True, normalize_time=True)
     env = gym.wrappers.FrameStackObservation(env, stack_size=4)
-    # rescale_env = RescaleActionWrapper(time_aware_env, "abs")
     env = gym.wrappers.RescaleAction(env, np.float32(-1.0), np.float32(1.0))
     return env
 
@@ -295,18 +287,18 @@ def main(
     rb.log_params(prefix="buffer/")
 
     # Random Exploration
+    noise_sampler = OUNoise(cfg.num_env, act_shape)
     s_np, infos = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
     for t in range(1, cfg.start_random):
-        a_np = random_action_gamma(
-            env.action_space  # pyright: ignore[reportArgumentType]
-        )
+        a_np = noise_sampler.sample().clip(-1.0, 1.0)
         s_next_np, r, terminated, truncated, info = env.step(a_np)
 
         if episode_start.all():
             s_np = s_next_np
             episode_start = np.logical_or(terminated, truncated)
+            noise_sampler.reset()
             continue
 
         reward_info = info["rewards"]
@@ -325,9 +317,9 @@ def main(
 
         s_np = s_next_np
         episode_start = np.logical_or(terminated, truncated)
+        noise_sampler.reset(episode_start)
 
     # Training
-    noise_sampler = OUNoise(cfg.batch_size, act_shape)
     agent.train()
     s_np, info = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
@@ -353,6 +345,7 @@ def main(
         if episode_start.all():
             s_np = s_next_np
             episode_start = np.logical_or(terminated, truncated)
+            noise_sampler.reset()
             continue
 
         reward_info = info["rewards"]
@@ -399,17 +392,19 @@ def main(
 
             agent.eval()
             avg_ret = evaluate(
-                cfg.model, cfg.pose, agent, t, episodes=cfg.eval_episodes
+                cfg.model, cfg.pose, agent, t, cfg.eval_episodes, cfg.reward_key
             )
             print(f"[{t:6d}] eval_return={avg_ret:.2f}")
             agent.train()
 
     # Final eval
-    final_ret = evaluate(cfg.model, cfg.pose, agent, -1, episodes=cfg.eval_episodes)
+    final_ret = evaluate(
+        cfg.model, cfg.pose, agent, -1, cfg.eval_episodes, cfg.reward_key
+    )
     print(f"Final average return over {cfg.eval_episodes} episodes: {final_ret:.2f}")
 
     # Save checkpoint
-    save_ckpt(agent, "sac_osim.pt")
+    save_ckpt(agent, "td3_osim.pt")
     env.close()
 
 
@@ -424,15 +419,13 @@ if __name__ == "__main__":
         log_interval=20,
         seed=42,
         model=gait14dof22_path,
-        pose=get_bent_pose(),
+        pose=get_default_pose(),
         visualize=False,
         num_env=32,
         reward_key=[
             "alive_reward",
             "velocity_reward",
             "energy_reward",
-            # "smoothness_reward",
-            # "head_stability_reward",
             "footstep_reward",
             "upright_reward",
         ],
@@ -470,7 +463,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_2",
+        "td3_ou-noise",
     )
 
     try:
