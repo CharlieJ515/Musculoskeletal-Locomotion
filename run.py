@@ -47,6 +47,7 @@ from analysis.tensorboard_utils.distribution import log_rewards, log_preds
 
 from utils.tmp_dir import get_tmp, clear_tmp
 from utils.save import save_ckpt
+from utils.exploration import OUNoise
 from deprecated.gamma_action_sample import random_action_gamma
 
 
@@ -84,61 +85,6 @@ class TrainConfig:
         np.random.seed(self.seed)
 
 
-class GaussianNoise:
-    def __init__(
-        self,
-        action_dim: tuple[int, ...],
-        start_std: float,
-        end_std: float,
-        decay_steps: int,
-        clip: float | None = None,
-    ):
-        self.action_dim = action_dim
-        self.start_std = start_std
-        self.end_std = end_std
-        self.decay_steps = decay_steps
-        self.clip = clip
-
-        self._t = 0
-
-    def sample(self, batch_size: int) -> np.ndarray:
-        std = self.get_current_std()
-        shape = (batch_size, *self.action_dim)
-        noise = np.random.normal(0, std, size=shape)
-
-        if self.clip is not None:
-            noise = np.clip(noise, -self.clip, self.clip)
-
-        self._t += 1
-
-        return noise
-
-    def get_current_std(self) -> float:
-        progress = min(1.0, self._t / self.decay_steps)
-        return self.start_std - (self.start_std - self.end_std) * progress
-
-
-class OUNoise:
-    def __init__(self, action_dim, theta=0.15, sigma=0.1, dt=1e-2):
-        self.action_dim = action_dim
-        self.theta = theta
-        self.sigma = sigma
-        self.dt = dt
-        self.state = np.zeros(self.action_dim)
-        self.reset()
-
-    def reset(self):
-        self.state = np.zeros(self.action_dim)
-
-    def sample(self) -> np.ndarray:
-        x = self.state
-        dx = -self.theta * x * self.dt + self.sigma * np.sqrt(
-            self.dt
-        ) * np.random.randn(self.action_dim)
-        self.state = x + dx
-        return self.state
-
-
 @torch.no_grad()
 def evaluate(
     model: Path,
@@ -154,7 +100,7 @@ def evaluate(
     returns = []
 
     motion_output_dir = tmpdir / f"{active_run_name}_eval_step{step}"
-    env = create_env(model, pose, False )
+    env = create_env(model, pose, False)
     env = MotionLoggerWrapper(env, motion_output_dir)
     agent.eval()
     for ep in range(episodes):
@@ -284,7 +230,7 @@ def create_env(model: Path, pose: Pose, visualize: bool) -> gym.Env:
                 dissipate_energy=True,
             ),
         ],
-        decay_steps=30_000 * 4
+        decay_steps=30_000 * 4,
     )
     reward_components = {
         "alive_reward": AliveReward(0.1, -200),
@@ -382,13 +328,7 @@ def main(
         episode_start = np.logical_or(terminated, truncated)
 
     # Training
-    noise_sampler = GaussianNoise(
-        action_dim=act_shape,
-        start_std=0.5,
-        end_std=0.05,
-        decay_steps=40_000,
-        clip=1.0,
-    )
+    noise_sampler = OUNoise(cfg.batch_size, act_shape)
     agent.train()
     s_np, info = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
@@ -397,7 +337,7 @@ def main(
         s_t = torch.as_tensor(s_np, dtype=torch.float32, device=agent.device)
         a_t = agent.select_action(s_t)
         a_np = a_t.cpu().numpy()
-        noise = noise_sampler.sample(batch_size=cfg.num_env)
+        noise = noise_sampler.sample()
         a_np = (a_np + noise).clip(-1.0, 1.0)  # TD3 config
 
         env.step_async(a_np)
@@ -410,23 +350,6 @@ def main(
         rb.update_priorities(batch.indices, td_error)  # type: ignore
 
         s_next_np, r, terminated, truncated, info = env.step_wait()
-
-        nan_mask = np.isnan(s_next_np)
-        if nan_mask.any():
-            flat_mask = nan_mask.reshape(s_next_np.shape[0], -1)
-            env_has_nan = flat_mask.any(axis=1)
-            faulty_env_indices = np.where(env_has_nan)[0]
-
-            print(f"\n[Warning] NaN detected at step {t}")
-
-            for env_idx in faulty_env_indices:
-                print(f"  > Env Index (ID): {env_idx}")
-                print(f"    - Episode Start (Previous): {episode_start[env_idx]}")
-                print(f"    - Terminated (Current):     {terminated[env_idx]}")
-                print(f"    - Truncated (Current):      {truncated[env_idx]}")
-                print(f"    - NaN Count in Obs:         {np.sum(nan_mask[env_idx])}")
-
-            s_next_np[nan_mask] = 0.0
 
         if episode_start.all():
             s_np = s_next_np
@@ -449,6 +372,7 @@ def main(
 
         s_np = s_next_np
         episode_start = np.logical_or(terminated, truncated)
+        noise_sampler.reset(episode_start)
 
         # logging
         critic_metrics = metrics["critic"]
