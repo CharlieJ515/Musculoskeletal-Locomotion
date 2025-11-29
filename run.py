@@ -287,7 +287,7 @@ def main(
     rb.log_params(prefix="buffer/")
 
     # Random Exploration
-    noise_sampler = OUNoise(cfg.num_env, act_shape)
+    noise_sampler = OUNoise(cfg.num_env, act_shape, sigma=0.2)
     s_np, infos = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
@@ -408,6 +408,8 @@ def main(
     env.close()
 
 
+print(123)
+
 if __name__ == "__main__":
 
     cfg = TrainConfig(
@@ -420,8 +422,8 @@ if __name__ == "__main__":
         seed=42,
         model=gait14dof22_path,
         pose=get_default_pose(),
-        visualize=False,
-        num_env=32,
+        visualize=True,
+        num_env=4,
         reward_key=[
             "alive_reward",
             "velocity_reward",
