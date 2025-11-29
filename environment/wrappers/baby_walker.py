@@ -112,7 +112,7 @@ class BabyWalkerWrapper(gym.Wrapper[Observation, ActType, Observation, ActType])
         factor = 1.0
         if self.decay_steps != 0:
             progress = min(self.total_step / self.decay_steps, 1.0)
-            factor = max(factor - progress, 0.0)
+            factor = max(factor - progress, 1e-5)
         self._update_stiffness(factor)
 
         obs, info = self.env.reset(seed=seed, options=options)

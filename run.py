@@ -154,7 +154,7 @@ def evaluate(
     returns = []
 
     motion_output_dir = tmpdir / f"{active_run_name}_eval_step{step}"
-    env = create_env(model, pose, True)
+    env = create_env(model, pose, False )
     env = MotionLoggerWrapper(env, motion_output_dir)
     agent.eval()
     for ep in range(episodes):
@@ -284,6 +284,7 @@ def create_env(model: Path, pose: Pose, visualize: bool) -> gym.Env:
                 dissipate_energy=True,
             ),
         ],
+        decay_steps=30_000 * 4
     )
     reward_components = {
         "alive_reward": AliveReward(0.1, -200),
