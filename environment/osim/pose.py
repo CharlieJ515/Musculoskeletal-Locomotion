@@ -11,6 +11,7 @@ class CoordState:
 
 @dataclass(slots=True)
 class Pose:
+    name: str
     _coord: dict[str, CoordState] = field(default_factory=dict)
 
     def set(self, name: str, q: Optional[float] = None, u: Optional[float] = None):
@@ -30,36 +31,15 @@ class Pose:
         return name in self._coord
 
 
-def get_osim_rl_pose() -> Pose:
-    pose = Pose()
-
-    # speeds (QQDot)
-    pose.set("pelvis_tx", u=0.0)  # forward speed (QQDot[3])
-    pose.set("pelvis_tz", u=0.0)  # rightward speed (QQDot[5])
-
-    # pelvis orientations/translations set to zero in reset
-    pose.set("pelvis_list", q=0.0)  # QQ[1]
-    pose.set("pelvis_rotation", q=0.0)  # QQ[2]
-    pose.set("pelvis_ty", q=0.94)  # pelvis height (QQ[4])
-    pose.set("pelvis_tilt", q=-0.0)  # trunk lean (+ backward) (QQ[0])
-
-    # right leg
-    pose.set("hip_adduction_r", q=-0.0)  # abduction is negative of adduction (QQ[7])
-    pose.set("hip_flexion_r", q=-0.0)  # flexion is negative in this model (QQ[6])
-    pose.set("knee_angle_r", q=0.0)  # extension positive (QQ[13])
-    pose.set("ankle_angle_r", q=-0.0)  # “flex” sign per model (QQ[15])
-
-    # left leg
-    pose.set("hip_adduction_l", q=-0.0)  # (QQ[10])
-    pose.set("hip_flexion_l", q=-0.0)  # (QQ[9])
-    pose.set("knee_angle_l", q=0.0)  # (QQ[14])
-    pose.set("ankle_angle_l", q=-0.0)  # (QQ[16])
+def get_default_pose() -> Pose:
+    pose = Pose("default")
 
     return pose
 
 
 def get_tilted_pose() -> Pose:
-    pose = get_osim_rl_pose()
+    pose = get_default_pose()
+    pose.name = "tilted"
     pose.set("pelvis_tilt", q=math.radians(-12))
     pose.set("hip_flexion_r", q=math.radians(12))
     pose.set("hip_flexion_l", q=math.radians(12))
@@ -69,6 +49,7 @@ def get_tilted_pose() -> Pose:
 
 def get_bent_pose() -> Pose:
     pose = get_tilted_pose()
+    pose.name = "bent"
     pose.set("pelvis_ty", q=0.920)
     pose.set("knee_angle_r", q=math.radians(-12))
     pose.set("knee_angle_l", q=math.radians(-12))
@@ -80,6 +61,7 @@ def get_bent_pose() -> Pose:
 
 def get_forward_pose() -> Pose:
     pose = get_bent_pose()
+    pose.name = "forward"
     pose.set("hip_flexion_r", q=math.radians(20))
     pose.set("hip_adduction_r", q=math.radians(-3))
     pose.set("hip_adduction_l", q=math.radians(-3))
