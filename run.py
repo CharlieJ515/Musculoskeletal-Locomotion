@@ -31,7 +31,6 @@ from environment.wrappers import (
     MotionLoggerWrapper,
     SimpleEnvWrapper,
     CompositeRewardWrapper,
-    BabyStepsWrapper,
     FrameSkipWrapper,
     BabyWalkerWrapper,
     LimitForceConfig,
