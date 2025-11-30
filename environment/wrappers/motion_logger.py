@@ -56,6 +56,8 @@ class MotionLoggerWrapper(gym.Wrapper[ObsType, ActType, ObsType, ActType]):
         self.table = opensim.TimeSeriesTable()
         self.table.setColumnLabels(coord_names)
         self.table.addTableMetaDataString("inDegrees", "no")
+        filename = self._episode_filename(self.episode_idx)
+        self.table.addTableMetaDataString("name", filename)
 
     def _sample_coordinates(
         self,
