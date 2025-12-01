@@ -104,8 +104,12 @@ def evaluate(
     returns = []
 
     motion_output_dir = tmpdir / f"{active_run_name}_eval_step{step}"
-    env = create_env(model, pose, False)
-    env = MotionLoggerWrapper(env, motion_output_dir)
+    env = create_env(model, pose, False, False)
+    env = MotionLoggerWrapper(
+        env,
+        motion_output_dir,
+        f"{active_run_name}_eval_step{step}_{{}}.mot",
+    )
     agent.eval()
     for ep in range(episodes):
         run_name = f"{active_run_name}_eval_step{step}_{ep}"
@@ -188,46 +192,54 @@ def evaluate(
     return float(np.mean(returns))
 
 
-def create_env(model: Path, pose: Pose, visualize: bool) -> gym.Env:
+def create_env(
+    model: Path,
+    pose: Pose,
+    visualize: bool,
+    baby_walker: bool,
+) -> gym.Env:
     osim_env = OsimEnv(model, pose, visualize=visualize)
     env = gym.wrappers.TimeLimit(osim_env, 1000)
     env = TargetSpeedWrapper(env, speed_range=(0.25, 0.75))
-    env = BabyWalkerWrapper(
-        env,
-        [
-            LimitForceConfig(
-                coordinate_name="pelvis_ty",
-                upper_limit=1.5,
-                upper_stiffness=100.0,
-                lower_limit=0.75,
-                lower_stiffness=2000.0,
-                damping=50.0,
-                transition=0.1,
-                dissipate_energy=True,
-            ),
-            LimitForceConfig(
-                coordinate_name="pelvis_tilt",
-                upper_limit=15.0,
-                upper_stiffness=500.0,
-                lower_limit=-15.0,
-                lower_stiffness=500.0,
-                damping=10.0,
-                transition=0.1,
-                dissipate_energy=True,
-            ),
-            LimitForceConfig(
-                coordinate_name="pelvis_list",
-                upper_limit=15.0,
-                upper_stiffness=500.0,
-                lower_limit=-15.0,
-                lower_stiffness=500.0,
-                damping=10.0,
-                transition=0.1,
-                dissipate_energy=True,
-            ),
-        ],
-        decay_steps=30_000 * 4,
-    )
+
+    if baby_walker:
+        env = BabyWalkerWrapper(
+            env,
+            [
+                LimitForceConfig(
+                    coordinate_name="pelvis_ty",
+                    upper_limit=1.5,
+                    upper_stiffness=100.0,
+                    lower_limit=0.75,
+                    lower_stiffness=2000.0,
+                    damping=50.0,
+                    transition=0.1,
+                    dissipate_energy=True,
+                ),
+                LimitForceConfig(
+                    coordinate_name="pelvis_tilt",
+                    upper_limit=15.0,
+                    upper_stiffness=500.0,
+                    lower_limit=-15.0,
+                    lower_stiffness=500.0,
+                    damping=10.0,
+                    transition=0.1,
+                    dissipate_energy=True,
+                ),
+                LimitForceConfig(
+                    coordinate_name="pelvis_list",
+                    upper_limit=15.0,
+                    upper_stiffness=500.0,
+                    lower_limit=-15.0,
+                    lower_stiffness=500.0,
+                    damping=10.0,
+                    transition=0.1,
+                    dissipate_energy=True,
+                ),
+            ],
+            decay_steps=30_000 * 4,
+        )
+
     reward_components = {
         "alive_reward": AliveReward(0.1, -200),
         "velocity_reward": VelocityReward(1.0),
@@ -269,7 +281,7 @@ def main(
 ):
     env = gym.vector.AsyncVectorEnv(
         [
-            lambda: create_env(cfg.model, cfg.pose, cfg.visualize)
+            lambda: create_env(cfg.model, cfg.pose, cfg.visualize, True)
             for i in range(cfg.num_env)
         ],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
@@ -434,7 +446,7 @@ if __name__ == "__main__":
         mp_context="spawn",
     )
 
-    temp_env = create_env(cfg.model, cfg.pose, False)
+    temp_env = create_env(cfg.model, cfg.pose, False, True)
     obs_shape = cast(tuple[int, ...], temp_env.observation_space.shape)
     act_shape = cast(tuple[int, ...], temp_env.action_space.shape)
     reward_shape = (len(cfg.reward_key),)
@@ -451,6 +463,8 @@ if __name__ == "__main__":
         noise_clip=0.25,
         policy_update_freq=2,
         lr=3e-4 / 4,
+        load_chkpt=True,
+        chkpt_file=Path("td3_osim.pt"),
     )
     per_cfg = PERConfig(
         capacity=25_000,
@@ -469,7 +483,10 @@ if __name__ == "__main__":
     )
 
     try:
-        main(cfg, td3_cfg, per_cfg)
+        # main(cfg, td3_cfg, per_cfg)
+
+        agent = TD3.from_config(td3_cfg)
+        evaluate(cfg.model, cfg.pose, agent, 0, cfg.eval_episodes, cfg.reward_key)
     finally:
         mlflow.end_run()  # mlflow.end_run is idempotent
         clear_tmp()
