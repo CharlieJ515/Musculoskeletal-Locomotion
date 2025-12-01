@@ -408,15 +408,13 @@ def main(
     env.close()
 
 
-print(123)
-
 if __name__ == "__main__":
 
     cfg = TrainConfig(
         total_steps=100_000,
         start_random=100,
         batch_size=256,
-        eval_interval=1_000,
+        eval_interval=5_000,
         eval_episodes=1,
         log_interval=20,
         seed=42,
@@ -453,7 +451,7 @@ if __name__ == "__main__":
         lr=3e-4 / 4,
     )
     per_cfg = PERConfig(
-        capacity=25_000,
+        capacity=100_000,
         obs_shape=obs_shape,
         action_shape=act_shape,
         reward_shape=reward_shape,
@@ -465,7 +463,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_ou-noise",
+        "td3_rb-size",
     )
 
     try:
