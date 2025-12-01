@@ -299,7 +299,7 @@ def main(
     rb.log_params(prefix="buffer/")
 
     # Random Exploration
-    noise_sampler = OUNoise(cfg.num_env, act_shape, sigma=0.2)
+    noise_sampler = OUNoise(cfg.num_env, act_shape, sigma=0.1)
     s_np, infos = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
@@ -420,22 +420,20 @@ def main(
     env.close()
 
 
-print(123)
-
 if __name__ == "__main__":
 
     cfg = TrainConfig(
         total_steps=100_000,
         start_random=100,
         batch_size=256,
-        eval_interval=1_000,
+        eval_interval=5_000,
         eval_episodes=1,
         log_interval=20,
         seed=42,
         model=gait14dof22_path,
         pose=get_default_pose(),
-        visualize=True,
-        num_env=4,
+        visualize=False,
+        num_env=32,
         reward_key=[
             "alive_reward",
             "velocity_reward",
@@ -443,7 +441,7 @@ if __name__ == "__main__":
             "footstep_reward",
             "upright_reward",
         ],
-        mp_context="spawn",
+        mp_context="forkserver",
     )
 
     temp_env = create_env(cfg.model, cfg.pose, False, True)
@@ -467,7 +465,7 @@ if __name__ == "__main__":
         chkpt_file=Path("td3_osim.pt"),
     )
     per_cfg = PERConfig(
-        capacity=25_000,
+        capacity=100_000,
         obs_shape=obs_shape,
         action_shape=act_shape,
         reward_shape=reward_shape,
@@ -479,7 +477,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_ou-noise",
+        "td3_rb-size",
     )
 
     try:
