@@ -241,7 +241,7 @@ def create_env(
         )
 
     reward_components = {
-        "alive_reward": AliveReward(0.1, -200),
+        "alive_reward": AliveReward(0.1, -10),
         "velocity_reward": VelocityReward(1.0),
         "energy_reward": EnergyReward(1.0),
         "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
@@ -461,8 +461,8 @@ if __name__ == "__main__":
         noise_clip=0.25,
         policy_update_freq=2,
         lr=3e-4 / 4,
-        load_chkpt=True,
-        chkpt_file=Path("td3_osim.pt"),
+        # load_chkpt=True,
+        # chkpt_file=Path("td3_osim.pt"),
     )
     per_cfg = PERConfig(
         capacity=100_000,
@@ -477,14 +477,14 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_rb-size",
+        "td3_reduced-termination-penalty",
     )
 
     try:
-        # main(cfg, td3_cfg, per_cfg)
+        main(cfg, td3_cfg, per_cfg)
 
-        agent = TD3.from_config(td3_cfg)
-        evaluate(cfg.model, cfg.pose, agent, 0, cfg.eval_episodes, cfg.reward_key)
+        # agent = TD3.from_config(td3_cfg)
+        # evaluate(cfg.model, cfg.pose, agent, 0, cfg.eval_episodes, cfg.reward_key)
     finally:
         mlflow.end_run()  # mlflow.end_run is idempotent
         clear_tmp()
