@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from environment.models import gait14dof22_path
 from environment.osim import OsimEnv
-from environment.osim.pose import Pose, get_default_pose
+from environment.osim.pose import Pose, get_default_pose, get_bent_pose
 from environment.osim.reward import (
     CompositeReward,
     AliveReward,
@@ -431,7 +431,7 @@ if __name__ == "__main__":
         log_interval=20,
         seed=42,
         model=gait14dof22_path,
-        pose=get_default_pose(),
+        pose=get_bent_pose(),
         visualize=False,
         num_env=32,
         reward_key=[
@@ -477,7 +477,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_reduced-termination-penalty",
+        "td3_reduced-termination-penalty_bent-pose",
     )
 
     try:
