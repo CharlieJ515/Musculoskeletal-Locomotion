@@ -6,35 +6,25 @@ class GaussianNoise:
         self,
         batch_size: int,
         action_dim: tuple[int, ...],
-        start_std: float,
-        end_std: float,
-        decay_steps: int,
+        sigma: float,
         clip: float | None = None,
     ):
         self.batch_size = batch_size
         self.action_dim = action_dim
-        self.start_std = start_std
-        self.end_std = end_std
-        self.decay_steps = decay_steps
+        self.sigma = sigma
         self.clip = clip
 
-        self._t = 0
-
     def sample(self) -> np.ndarray:
-        std = self.get_current_std()
         shape = (self.batch_size, *self.action_dim)
-        noise = np.random.normal(0, std, size=shape)
+        noise = np.random.normal(0, self.sigma, size=shape)
 
         if self.clip is not None:
             noise = np.clip(noise, -self.clip, self.clip)
 
-        self._t += 1
-
         return noise
 
-    def get_current_std(self) -> float:
-        progress = min(1.0, self._t / self.decay_steps)
-        return self.start_std - (self.start_std - self.end_std) * progress
+    def reset(self, *args, **kwargs):
+        pass
 
 
 class OUNoise:

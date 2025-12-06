@@ -43,7 +43,7 @@ from analysis.tensorboard_utils.distribution import log_rewards, log_preds
 
 from utils.tmp_dir import get_tmp, clear_tmp
 from utils.save import save_ckpt
-from utils.exploration import OUNoise
+from utils.exploration import OUNoise, GaussianNoise
 from deprecated.gamma_action_sample import random_action_gamma
 
 
@@ -299,7 +299,8 @@ def main(
     rb.log_params(prefix="buffer/")
 
     # Random Exploration
-    noise_sampler = OUNoise(cfg.num_env, act_shape, sigma=0.1)
+    # noise_sampler = OUNoise(cfg.num_env, act_shape, sigma=0.1)
+    noise_sampler = GaussianNoise(cfg.num_env, act_shape, sigma=0.2)
     s_np, infos = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool)
     print("Starting random action exploration")
@@ -477,7 +478,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_no-baby-walker",
+        "td3_no-baby-walker_gauss",
     )
 
     try:
