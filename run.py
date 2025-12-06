@@ -243,14 +243,14 @@ def create_env(
     reward_components = {
         "alive_reward": AliveReward(0.1, -10),
         "velocity_reward": VelocityReward(1.0),
-        "energy_reward": EnergyReward(1.0),
+        # "energy_reward": EnergyReward(1.0),
         "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
         "upright_reward": UprightReward(1.0),
     }
     reward_weights = {
         "alive_reward": 1.0,
         "velocity_reward": 1.0,
-        "energy_reward": 1.0,
+        # "energy_reward": 1.0,
         "footstep_reward": 1.0,
         "upright_reward": 1.0,
     }
@@ -281,7 +281,7 @@ def main(
 ):
     env = gym.vector.AsyncVectorEnv(
         [
-            lambda: create_env(cfg.model, cfg.pose, cfg.visualize, True)
+            lambda: create_env(cfg.model, cfg.pose, cfg.visualize, False)
             for i in range(cfg.num_env)
         ],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
@@ -437,14 +437,14 @@ if __name__ == "__main__":
         reward_key=[
             "alive_reward",
             "velocity_reward",
-            "energy_reward",
+            # "energy_reward",
             "footstep_reward",
             "upright_reward",
         ],
         mp_context="forkserver",
     )
 
-    temp_env = create_env(cfg.model, cfg.pose, False, True)
+    temp_env = create_env(cfg.model, cfg.pose, False, False)
     obs_shape = cast(tuple[int, ...], temp_env.observation_space.shape)
     act_shape = cast(tuple[int, ...], temp_env.action_space.shape)
     reward_shape = (len(cfg.reward_key),)
@@ -477,7 +477,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_reduced-termination-penalty_bent-pose",
+        "td3_no-baby-walker",
     )
 
     try:
