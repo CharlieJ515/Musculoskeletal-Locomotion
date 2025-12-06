@@ -3,6 +3,7 @@ from typing import Dict, Tuple
 import dataclasses
 
 import opensim
+import numpy as np
 
 from .observation import FootState, Observation
 from .action import Action
@@ -383,3 +384,35 @@ class FootstepReward(RewardComponent):
         r_contact = r_force < self.threshold
         l_contact = l_force < self.threshold
         return r_contact, l_contact
+
+
+class BodySupportReward(RewardComponent):
+    def __init__(self, scale: float = 1.0, sensitivity: float = -10.0):
+        self.scale = scale
+        self.sensitivity = sensitivity
+
+    def compute(
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
+    ) -> float:
+        # ground vertical force is negative
+        f_left = abs(obs.foot["foot_l"].ground.force.y)
+        f_right = abs(obs.foot["foot_r"].ground.force.y)
+        vertical_force = f_left + f_right
+
+        mass = obs.norm_spec.mass  # type: ignore
+        g = obs.norm_spec.g  # type: ignore
+        weight = mass * g
+        norm_force = vertical_force / weight
+
+        reward = np.exp(self.sensitivity * (norm_force - 1.0) ** 2)
+
+        return reward * self.scale
+
+    def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
+        pass
