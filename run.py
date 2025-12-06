@@ -22,6 +22,7 @@ from environment.osim.reward import (
     EnergyReward,
     UprightReward,
     FootstepReward,
+    BodySupportReward,
 )
 from environment.wrappers import (
     TargetSpeedWrapper,
@@ -244,15 +245,17 @@ def create_env(
         "alive_reward": AliveReward(0.1, -10),
         "velocity_reward": VelocityReward(1.0),
         # "energy_reward": EnergyReward(1.0),
-        "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
+        # "footstep_reward": FootstepReward(5.0, stepsize=osim_env.osim_model.stepsize),
         "upright_reward": UprightReward(1.0),
+        "body_support_reward": BodySupportReward(1.0, -10),
     }
     reward_weights = {
         "alive_reward": 1.0,
         "velocity_reward": 1.0,
         # "energy_reward": 1.0,
-        "footstep_reward": 1.0,
+        # "footstep_reward": 1.0,
         "upright_reward": 1.0,
+        "body_support_reward": 1.0,
     }
     reward_fn = CompositeReward(reward_components, reward_weights)
     env = CompositeRewardWrapper(env, reward_fn)
@@ -439,8 +442,9 @@ if __name__ == "__main__":
             "alive_reward",
             "velocity_reward",
             # "energy_reward",
-            "footstep_reward",
+            # "footstep_reward",
             "upright_reward",
+            "body_support_reward",
         ],
         mp_context="forkserver",
     )
@@ -478,7 +482,7 @@ if __name__ == "__main__":
     start_mlflow(
         "https://mlflow.kyusang-jang.com/capstone",
         "TD3-Osim",
-        "td3_no-baby-walker_gauss",
+        "td3_body-support",
     )
 
     try:
