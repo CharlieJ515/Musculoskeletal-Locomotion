@@ -26,46 +26,6 @@ class RewardComponent(ABC):
         pass
 
 
-#
-# def _require_stage(model: osim.Model, state: osim.State, stage: str = "Velocity"):
-#     """
-#     Ensure the State is realized to at least the requested stage.
-#     Valid: "Position", "Velocity", "Dynamics", "Acceleration", "Report"
-#     """
-#     stages = {
-#         "Position": osim.Stage.Position,
-#         "Velocity": osim.Stage.Velocity,
-#         "Dynamics": osim.Stage.Dynamics,
-#         "Acceleration": osim.Stage.Acceleration,
-#         "Report": osim.Stage.Report,
-#     }
-#     model.realize(state, stages[stage])
-#
-#
-# def _joint_spatial_force_G(joint: osim.Joint, state: osim.State):
-#     """
-#     Reaction on parent, expressed in Ground. Returns (moment_G, force_G) as np arrays.
-#     """
-#     # requires Acceleration stage
-#     _require_stage(joint.getModel(), state, "Acceleration")
-#     sv = joint.calcReactionOnParentExpressedInGround(state)  # SimTK::SpatialVec {moment; force}
-#     M = np.array([sv[0][0], sv[0][1], sv[0][2]])
-#     F = np.array([sv[1][0], sv[1][1], sv[1][2]])
-#     return M, F
-#
-#
-# def _muscle_positive_mech_power(m: osim.Muscle, state: osim.State) -> float:
-#     """
-#     Mechanical power proxy (W): max(F_fiber * v_fiber, 0).
-#     """
-#     _require_stage(m.getModel(), state, "Dynamics")
-#     F = m.getFiberForce(state)     # N
-#     v = m.getFiberVelocity(state)  # m/s (sign convention per model)
-#     P = F * v
-#     return float(max(P, 0.0))
-#
-
-
 class VelocityReward(RewardComponent):
     __slots__ = ["scale"]
 
@@ -285,55 +245,6 @@ class FootImpactPenalty(RewardComponent):
 #         return -cost
 
 
-class CompositeReward:
-    __slots__ = ["components", "weights"]
-
-    def __init__(
-        self, components: Dict[str, RewardComponent], weights: Dict[str, float]
-    ):
-        self.components = components
-        self.weights = weights
-
-        self._check_key()
-
-    def _check_key(self):
-        component_keys = set(self.components.keys())
-        weight_keys = set(self.weights.keys())
-
-        missing_weights = component_keys - weight_keys
-        missing_components = weight_keys - component_keys
-
-        if missing_weights or missing_components:
-            parts = []
-            if missing_weights:
-                parts.append(f"weights missing keys: {sorted(missing_weights)}")
-            if missing_components:
-                parts.append(f"components missing keys: {sorted(missing_components)}")
-            raise ValueError("Reward mapping key mismatch: " + "; ".join(parts))
-
-    def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
-        for t in self.components.values():
-            t.reset(model, state, obs)
-
-    def compute(
-        self,
-        model: opensim.Model,
-        state: opensim.State,
-        obs: Observation,
-        action: Action,
-        terminated: bool,
-        truncated: bool,
-    ) -> Tuple[float, Dict[str, float]]:
-        total = 0.0
-        rewards: Dict[str, float] = {}
-        for name, component in self.components.items():
-            w = self.weights[name]
-            reward = component.compute(model, state, obs, action, terminated, truncated)
-            total += w * reward
-            rewards[name] = reward
-        return float(total), rewards
-
-
 class FootstepReward(RewardComponent):
     def __init__(self, scale: float = 1.0, stepsize: float = 0.01):
         self.scale = scale
@@ -387,6 +298,8 @@ class FootstepReward(RewardComponent):
 
 
 class BodySupportReward(RewardComponent):
+    __slots__ = ["scale", "sensitivity"]
+
     def __init__(self, scale: float = 1.0, sensitivity: float = -10.0):
         self.scale = scale
         self.sensitivity = sensitivity
@@ -416,3 +329,105 @@ class BodySupportReward(RewardComponent):
 
     def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
         pass
+
+
+# class KneeBendReward(RewardComponent):
+#     __slots__ = ["scale", "target_angle", "sigma", "knee_names"]
+
+#     def __init__(
+#         self,
+#         scale: float = 1.0,
+#         target_angle: float = -0.5,  # approx -28 degrees (flexion is usually negative in OpenSim)
+#         sigma: float = 0.5,
+#         knee_names: tuple = ("knee_r", "knee_l"),
+#     ):
+#         self.scale = scale
+#         self.target_angle = target_angle
+#         self.sigma = sigma
+#         self.knee_names = knee_names
+
+#     def compute(
+#         self,
+#         model: opensim.Model,
+#         state: opensim.State,
+#         obs: Observation,
+#         action: Action,
+#         terminated: bool,
+#         truncated: bool,
+#     ) -> float:
+#         total_reward = 0.0
+
+#         # Access joint coordinates directly from model/state for safety
+#         # (Coordinate names in OpenSim standard models are usually 'knee_angle_r' or 'knee_r')
+#         coords = model.getCoordinateSet()
+
+#         for name in self.knee_names:
+#             # Try specific suffix first (L2M models often use 'knee_angle_r')
+#             # Adjust string lookup based on your specific .osim file
+#             try:
+#                 coord = coords.get(f"{name}_angle")
+#             except:
+#                 coord = coords.get(name)
+
+#             if not coord:
+#                 continue
+
+#             # Get angle in radians
+#             angle = coord.getValue(state)
+
+#             # Gaussian reward: exp( - (angle - target)^2 / (2 * sigma^2) )
+#             # 1.0 when at target, decays to 0.0 as it moves away
+#             diff = angle - self.target_angle
+#             reward = math.exp(-(diff**2) / (2 * self.sigma**2))
+#             total_reward += reward
+
+#         return total_reward * self.scale
+
+
+class CompositeReward:
+    __slots__ = ["components", "weights"]
+
+    def __init__(
+        self, components: Dict[str, RewardComponent], weights: Dict[str, float]
+    ):
+        self.components = components
+        self.weights = weights
+
+        self._check_key()
+
+    def _check_key(self):
+        component_keys = set(self.components.keys())
+        weight_keys = set(self.weights.keys())
+
+        missing_weights = component_keys - weight_keys
+        missing_components = weight_keys - component_keys
+
+        if missing_weights or missing_components:
+            parts = []
+            if missing_weights:
+                parts.append(f"weights missing keys: {sorted(missing_weights)}")
+            if missing_components:
+                parts.append(f"components missing keys: {sorted(missing_components)}")
+            raise ValueError("Reward mapping key mismatch: " + "; ".join(parts))
+
+    def reset(self, model: opensim.Model, state: opensim.State, obs: Observation):
+        for t in self.components.values():
+            t.reset(model, state, obs)
+
+    def compute(
+        self,
+        model: opensim.Model,
+        state: opensim.State,
+        obs: Observation,
+        action: Action,
+        terminated: bool,
+        truncated: bool,
+    ) -> Tuple[float, Dict[str, float]]:
+        total = 0.0
+        rewards: Dict[str, float] = {}
+        for name, component in self.components.items():
+            w = self.weights[name]
+            reward = component.compute(model, state, obs, action, terminated, truncated)
+            total += w * reward
+            rewards[name] = reward
+        return float(total), rewards
