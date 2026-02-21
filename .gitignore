@@ -1,3 +1,6 @@
+# vscode configuration
+.vscode
+
 # ignore pytorch checkpoints
 *.pt
 
