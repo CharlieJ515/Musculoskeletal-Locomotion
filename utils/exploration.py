@@ -1,7 +1,43 @@
+from abc import ABC, abstractmethod
+
 import numpy as np
 
 
-class GaussianNoise:
+class BaseNoise(ABC):
+    def __init__(
+        self,
+        batch_size: int,
+        action_dim: tuple[int, ...],
+        sigma_start: float = 0.4,
+        sigma_min: float = 0.05,
+        decay_steps: int = 50000,
+    ):
+        self.batch_size = batch_size
+        self.action_dim = action_dim
+        self.sigma_start = sigma_start
+        self.sigma_min = sigma_min
+        self.decay_steps = decay_steps
+        self.current_step = 0
+
+    @property
+    def current_sigma(self) -> float:
+        if self.decay_steps == 0:
+            return self.sigma_start
+
+        # Calculate linear decay rate bounded between 0 and 1
+        decay_rate = min(1.0, self.current_step / self.decay_steps)
+        return self.sigma_start - decay_rate * (self.sigma_start - self.sigma_min)
+
+    @abstractmethod
+    def sample(self) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def reset(self, mask: np.ndarray | None = None):
+        pass
+
+
+class GaussianNoise(BaseNoise):
     def __init__(
         self,
         batch_size: int,
@@ -11,21 +47,8 @@ class GaussianNoise:
         decay_steps: int = 50000,
         clip: float | None = None,
     ):
-        self.batch_size = batch_size
-        self.action_dim = action_dim
-        self.sigma_start = sigma_start
-        self.sigma_min = sigma_min
-        self.decay_steps = decay_steps
+        super().__init__(batch_size, action_dim, sigma_start, sigma_min, decay_steps)
         self.clip = clip
-        self.current_step = 0
-
-    @property
-    def current_sigma(self) -> float:
-        if self.decay_steps == 0:
-            return self.sigma_start
-        # Calculate linear decay rate bounded between 0 and 1
-        decay_rate = min(1.0, self.current_step / self.decay_steps)
-        return self.sigma_start - decay_rate * (self.sigma_start - self.sigma_min)
 
     def sample(self) -> np.ndarray:
         shape = (self.batch_size, *self.action_dim)
@@ -41,7 +64,7 @@ class GaussianNoise:
         pass
 
 
-class OUNoise:
+class OUNoise(BaseNoise):
     def __init__(
         self,
         batch_size: int,
@@ -52,24 +75,10 @@ class OUNoise:
         decay_steps: int = 50000,
         dt: float = 1e-2,
     ):
-        self.batch_size = batch_size
-        self.action_dim = action_dim
+        super().__init__(batch_size, action_dim, sigma_start, sigma_min, decay_steps)
         self.theta = theta
-        self.sigma_start = sigma_start
-        self.sigma_min = sigma_min
-        self.decay_steps = decay_steps
         self.dt = dt
-        self.current_step = 0
-
         self.state = np.zeros((self.batch_size, *self.action_dim), dtype=np.float32)
-
-    @property
-    def current_sigma(self) -> float:
-        if self.decay_steps == 0:
-            return self.sigma_start
-        
-        decay_rate = min(1.0, self.current_step / self.decay_steps)
-        return self.sigma_start - decay_rate * (self.sigma_start - self.sigma_min)
 
     def reset(self, mask: np.ndarray | None = None):
         if mask is None:
