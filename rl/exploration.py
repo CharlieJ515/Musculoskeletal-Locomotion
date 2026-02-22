@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from configs import NoiseConfig
+
 
 class BaseNoise(ABC):
     def __init__(
@@ -100,3 +102,34 @@ class OUNoise(BaseNoise):
 
         self.current_step += 1
         return self.state
+
+
+NOISE_REGISTRY = {
+    "GaussianNoise": GaussianNoise,
+    "OUNoise": OUNoise,
+}
+
+
+def build_noise(
+    cfg: NoiseConfig, batch_size: int, action_dim: tuple[int, ...]
+) -> BaseNoise:
+    if cfg.name not in NOISE_REGISTRY:
+        raise ValueError(f"Unknown noise generator: {cfg.name}")
+
+    NoiseClass = NOISE_REGISTRY[cfg.name]
+
+    kwargs = {
+        "batch_size": batch_size,
+        "action_dim": action_dim,
+        "sigma_start": cfg.sigma,
+        "sigma_min": cfg.sigma_min,
+        "decay_steps": cfg.decay_steps,
+    }
+
+    if cfg.name == "OUNoise":
+        kwargs["theta"] = cfg.theta
+        kwargs["dt"] = cfg.dt
+    elif cfg.name == "GaussianNoise":
+        kwargs["clip"] = cfg.clip
+
+    return NoiseClass(**kwargs)
