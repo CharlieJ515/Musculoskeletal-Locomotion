@@ -1,22 +1,13 @@
-from __future__ import annotations
-from dataclasses import dataclass, replace
-from typing import Union, Tuple
+from dataclasses import replace
+from typing import Tuple, Union
 
+import mlflow
 import numpy as np
 import torch
-import mlflow
 
-from rl.replay_buffer.replay_buffer import ReplayBuffer, ReplayBufferConfig
+from configs import PERConfig
+from rl.replay_buffer.replay_buffer import ReplayBuffer
 from rl.transition import Transition, TransitionBatch
-
-
-@dataclass(kw_only=True)
-class PERConfig(ReplayBufferConfig):
-    beta_frames: int
-    alpha: float = 0.6
-    beta_start: float = 0.4
-    epsilon: float = 1e-5
-    name: str = "PrioritizedReplayBuffer/"
 
 
 class SumTree:
@@ -193,7 +184,7 @@ class PER(ReplayBuffer):
             )
 
     @classmethod
-    def from_config(cls, cfg: "PERConfig") -> "PER":  # type: ignore
+    def from_config(cls, cfg: PERConfig) -> "PER":  # type: ignore
         return cls(
             capacity=cfg.capacity,
             obs_shape=cfg.obs_shape,
