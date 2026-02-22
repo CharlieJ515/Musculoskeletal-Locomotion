@@ -1,12 +1,13 @@
-from typing import Optional, Any
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Optional
 
+import mlflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import mlflow
+
+from configs import SACConfig
 
 from .base import BaseRL
 from .transition import TransitionBatch
@@ -18,33 +19,9 @@ from .transition import TransitionBatch
 # TODO - support shared base network between actor and critics
 
 
-@dataclass
-class SACConfig:
-    state_dim: tuple[int, ...]
-    action_dim: tuple[int, ...]
-    actor_net: type[nn.Module]
-    critic_net: type[nn.Module]
-    target_entropy: float
-    reward_dim: tuple[int, ...] = (1,)
-    reward_weight: torch.Tensor = torch.ones(1)
-    gamma: float = 0.99
-    log_std_min: float = -20.0
-    log_std_max: float = 2.0
-    lr: float = 3e-5
-    tau: float = 1e-2
-    weight_decay: float = 0.0
-    policy_update_freq: int = 1
-    device: Optional[torch.device] = None
-    use_jit: bool = True
-    train: bool = True
-    name: str = "SAC"
-    load_ckpt: bool = False
-    ckpt_file: Optional[Path] = None
-
-
 def default_target_entropy(action_space: tuple[int, ...]) -> int:
-    from functools import reduce
     import operator
+    from functools import reduce
 
     return -reduce(operator.mul, action_space, 1)
 

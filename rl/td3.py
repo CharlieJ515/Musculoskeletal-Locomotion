@@ -1,39 +1,17 @@
 from dataclasses import dataclass
-from typing import Optional, Any
 from pathlib import Path
+from typing import Any, Optional
 
+import mlflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import mlflow
+
+from configs import TD3Config
 
 from .base import BaseRL
 from .transition import TransitionBatch
-
-
-@dataclass
-class TD3Config:
-    state_dim: tuple[int, ...]
-    action_dim: tuple[int, ...]
-    actor_net: type[nn.Module]
-    critic_net: type[nn.Module]
-    reward_dim: tuple[int, ...] = (1,)
-    reward_weight: torch.Tensor = torch.ones(1)
-    gamma: float = 0.99
-    lr: float = 3e-4
-    tau: float = 0.005
-    weight_decay: float = 0.0
-    policy_update_freq: int = 2
-    policy_noise: float = 0.2
-    noise_clip: float = 0.5
-    max_action: float = 1.0
-    device: Optional[torch.device] = None
-    use_jit: bool = True
-    train: bool = True
-    name: str = "TD3"
-    load_chkpt: bool = False
-    chkpt_file: Optional[Path] = None
 
 
 class TD3(BaseRL):
