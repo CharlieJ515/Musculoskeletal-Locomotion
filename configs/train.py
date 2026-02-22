@@ -29,10 +29,10 @@ class TrainConfig:
     num_env: int
     mp_context: Literal["spawn", "fork", "forkserver"]
 
+    noise: NoiseConfig
     wrappers: list[dict[str, Any]] = field(default_factory=list)
     rewards: list[dict[str, Any]] = field(default_factory=list)
     reward_key: list[str] = field(default_factory=list)
-    noise: NoiseConfig | None = None
 
     def log_params(self):
         mlflow.log_params(
@@ -74,7 +74,6 @@ class TrainConfig:
             raise ValueError(f"Unknown model '{model_name}'")
         d["model"] = MODEL_REGISTRY[model_name]
 
-        if "noise" in d:
-            d["noise"] = NoiseConfig(**d["noise"])
+        d["noise"] = NoiseConfig(**d["noise"])
 
         return cls(**d)
