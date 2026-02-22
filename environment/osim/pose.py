@@ -1,6 +1,6 @@
-from typing import Optional, Iterator
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
+from typing import Iterator, Optional
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,3 +66,11 @@ def get_forward_pose() -> Pose:
     pose.set("hip_adduction_r", q=math.radians(-3))
     pose.set("hip_adduction_l", q=math.radians(-3))
     return pose
+
+
+POSE_REGISTRY = {
+    "default": get_default_pose,
+    "tilted": get_tilted_pose,
+    "bent": get_bent_pose,
+    "forward": get_forward_pose,
+}
