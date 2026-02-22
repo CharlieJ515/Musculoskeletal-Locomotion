@@ -1,7 +1,7 @@
 import gymnasium as gym
 
 from .baby_walker import BabyWalkerWrapper, LimitForceConfig
-from .composite_reward import CompositeRewardWrapper
+from .composite_reward import CompositeRewardWrapper, reward_info_to_ndarray
 from .frame_skip import FrameSkipWrapper
 from .motion_logger import MotionLoggerWrapper
 from .rescale_action import RescaleActionWrapper

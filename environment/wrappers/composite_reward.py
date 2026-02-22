@@ -1,9 +1,21 @@
 from typing import Any, SupportsFloat
+
 import gymnasium as gym
+import numpy as np
 import opensim
 
-from environment.osim import Observation, Action
-from environment.osim.reward import CompositeReward
+from environment.osim import Action, Observation
+from environment.rewards import CompositeReward
+
+
+def reward_info_to_ndarray(
+    reward_key: list[str], reward_info: dict[str, np.ndarray]
+) -> np.ndarray:
+    reward = np.array(
+        [reward_info[key] for key in reward_key],
+        dtype=np.float32,
+    ).T
+    return reward
 
 
 class CompositeRewardWrapper(gym.Wrapper[Observation, Action, Observation, Action]):
