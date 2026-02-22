@@ -9,7 +9,7 @@ from .simple_env import SimpleEnvWrapper
 from .target_speed import TargetSpeedWrapper
 from .target_velocity import TargetVelocityWrapper
 
-WRAPPER_REGISTRY = {
+WRAPPER_REGISTRY: dict[str, type[gym.Wrapper]] = {
     # custom wrappers
     "MotionLoggerWrapper": MotionLoggerWrapper,
     "TargetSpeedWrapper": TargetSpeedWrapper,
@@ -25,8 +25,3 @@ WRAPPER_REGISTRY = {
     "FrameStackObservation": gym.wrappers.FrameStackObservation,
     "RescaleAction": gym.wrappers.RescaleAction,
 }
-
-__all__ = [
-    "WRAPPER_REGISTRY",
-    "LimitForceConfig",
-]

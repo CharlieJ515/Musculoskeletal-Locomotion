@@ -104,7 +104,7 @@ class OUNoise(BaseNoise):
         return self.state
 
 
-NOISE_REGISTRY = {
+NOISE_REGISTRY: dict[str, type[BaseNoise]] = {
     "GaussianNoise": GaussianNoise,
     "OUNoise": OUNoise,
 }
