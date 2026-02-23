@@ -17,9 +17,44 @@ class BaseReplayBuffer(ABC):
         *,
         device: torch.device = torch.device("cpu"),
         obs_dtype: torch.dtype = torch.float32,
-        act_dtype: torch.dtype = torch.float32,
-        rew_dtype: torch.dtype = torch.float32,
-    ) -> None: ...
+        action_dtype: torch.dtype = torch.float32,
+        reward_dtype: torch.dtype = torch.float32,
+        name: str = "ReplayBuffer",
+    ) -> None:
+        self.capacity = int(capacity)
+        self.name = name
+        self._device = device
+
+        self._obs_shape = obs_shape
+        self._action_shape = action_shape
+        self._reward_shape = reward_shape
+
+        self._obs = torch.zeros(
+            (self.capacity, *self._obs_shape),
+            dtype=obs_dtype,
+            device=self._device,
+        )
+        self._actions = torch.zeros(
+            (self.capacity, *self._action_shape),
+            dtype=action_dtype,
+            device=self._device,
+        )
+        self._rewards = torch.zeros(
+            (self.capacity, *self._reward_shape),
+            dtype=reward_dtype,
+            device=self._device,
+        )
+        self._next_obs = torch.zeros(
+            (self.capacity, *self._obs_shape),
+            dtype=obs_dtype,
+            device=self._device,
+        )
+        self._dones = torch.zeros(
+            (self.capacity,), dtype=torch.bool, device=self._device
+        )
+
+        self._ptr = 0
+        self._size = 0
 
     @abstractmethod
     def add(
@@ -28,16 +63,20 @@ class BaseReplayBuffer(ABC):
     ) -> None: ...
 
     @abstractmethod
-    def sample(self, batch_size: int) -> TransitionBatch: ...
+    def sample(
+        self, batch_size: int, *, pin_memory: bool = True
+    ) -> TransitionBatch: ...
 
-    @abstractmethod
-    def __len__(self) -> int: ...
+    def __len__(self) -> int:
+        return self._size
 
-    @abstractmethod
-    def clear(self) -> None: ...
+    def clear(self) -> None:
+        self._ptr = 0
+        self._size = 0
 
-    @abstractmethod
-    def device(self) -> torch.device: ...
+    @property
+    def device(self) -> torch.device:
+        return self._device
 
     @abstractmethod
     def log_params(

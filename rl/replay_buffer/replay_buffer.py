@@ -26,41 +26,17 @@ class ReplayBuffer(BaseReplayBuffer):
         reward_dtype: torch.dtype = torch.float32,
         name: str = "ReplayBuffer",
     ) -> None:
-        self.capacity = int(capacity)
-        self._device = device
-        self.name = name
-
-        # storage
-        self._obs = torch.zeros(
-            (capacity, *obs_shape),
-            dtype=obs_dtype,
-            device=self._device,
+        super().__init__(
+            capacity=capacity,
+            obs_shape=obs_shape,
+            action_shape=action_shape,
+            reward_shape=reward_shape,
+            device=device,
+            obs_dtype=obs_dtype,
+            action_dtype=action_dtype,
+            reward_dtype=reward_dtype,
+            name=name,
         )
-        self._actions = torch.zeros(
-            (capacity, *action_shape),
-            dtype=action_dtype,
-            device=self._device,
-        )
-        self._rewards = torch.zeros(
-            (capacity, *reward_shape),
-            dtype=reward_dtype,
-            device=self._device,
-        )
-        self._next_obs = torch.zeros(
-            (capacity, *obs_shape),
-            dtype=obs_dtype,
-            device=self._device,
-        )
-        self._dones = torch.zeros((capacity,), dtype=torch.bool, device=self._device)
-
-        # ring buffer pointers
-        self._ptr = 0
-        self._size = 0
-
-        # shapes
-        self._obs_shape = obs_shape
-        self._action_shape = action_shape
-        self._reward_shape = reward_shape
 
     def add(self, transition: Union[Transition, TransitionBatch]) -> None:
         batch = (
@@ -191,16 +167,6 @@ class ReplayBuffer(BaseReplayBuffer):
             indices=idx,
         )
         return batch
-
-    def __len__(self) -> int:
-        return self._size
-
-    def clear(self) -> None:
-        self._ptr = 0
-        self._size = 0
-
-    def device(self) -> torch.device:
-        return self._device
 
     def log_params(
         self, mlflow_writer: MlflowWriter, *, prefix: str = "buffer/"
