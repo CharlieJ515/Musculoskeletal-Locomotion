@@ -4,20 +4,18 @@ import gymnasium as gym
 import matplotlib
 import numpy as np
 import torch
-import yaml
 from tqdm import tqdm
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from analysis import MlflowWriter, TBWriter
-from configs import PERConfig, TD3Config, TrainConfig
+from configs import TrainConfig
 from environment.builder import create_env
 from environment.wrappers import MotionLoggerWrapper, reward_info_to_ndarray
-from models.td3_mlp import MLPActor, MLPCritic
-from rl import PER, TD3, BaseRL, TransitionBatch, build_noise
+from rl import BaseNoise, BaseReplayBuffer, BaseRL, TransitionBatch
 from utils.save import save_ckpt
-from utils.tmp_dir import clear_tmp, get_tmp
+from utils.tmp_dir import get_tmp
 
 
 @torch.no_grad()
@@ -130,7 +128,8 @@ def evaluate(
 def main(
     cfg: TrainConfig,
     agent: BaseRL,
-    rb: PER,
+    rb: BaseReplayBuffer,
+    noise_sampler: BaseNoise,
     tb_writer: TBWriter,
     mlflow_writer: MlflowWriter,
 ):
@@ -143,9 +142,6 @@ def main(
 
     agent.log_params(mlflow_writer, prefix="agent/")
     rb.log_params(mlflow_writer, prefix="buffer/")
-
-    act_shape = cast(tuple[int, ...], env.single_action_space.shape)
-    noise_sampler = build_noise(cfg.noise, cfg.num_env, act_shape)
 
     s_np, infos = env.reset(seed=cfg.seed)
     episode_start = np.array([False] * env.num_envs, np.bool_)
@@ -198,8 +194,16 @@ def main(
         batch = rb.sample(cfg.batch_size, pin_memory=True).to(device, non_blocking=True)
         metrics = agent.update(batch)
 
-        td_error = metrics.get("critic", {}).get("td_error", metrics.get("td_error"))
-        if td_error is not None:
+        if hasattr(rb, "update_priorities"):
+            td_error = metrics.get("critic", {}).get(
+                "td_error", metrics.get("td_error")
+            )
+            if td_error is None:
+                raise RuntimeError(
+                    "The replay buffer supports priority updates, but 'td_error' "
+                    "was not found in the metrics returned by the agent's update() method."
+                )
+
             rb.update_priorities(batch.indices, td_error)  # type: ignore
 
         s_next_np, r, terminated, truncated, info = env.step_wait()
@@ -252,32 +256,47 @@ def main(
 
 
 if __name__ == "__main__":
-    with open("config.yaml", "r") as f:
+    import os
+
+    import yaml
+    from dotenv import load_dotenv
+
+    from models.td3_mlp import MLPActor, MLPCritic
+    from rl import create_agent, create_buffer, create_noise_sampler
+    from utils.tmp_dir import clear_tmp
+
+    load_dotenv(".env")
+
+    config_file = os.getenv("CONFIG_FILE", "config.yaml")
+    with open(config_file, "r") as f:
         yaml_config = yaml.safe_load(f)
 
     cfg = TrainConfig.from_dict(yaml_config["train"])
-
-    agent_cfg = TD3Config.from_dict(
-        yaml_config["td3"], actor_net=MLPActor, critic_net=MLPCritic
-    )
-    agent = TD3.from_config(agent_cfg)
-    per_cfg = PERConfig.from_dict(yaml_config["per"])
-    rb = PER.from_config(per_cfg)
+    agent = create_agent(yaml_config["agent"], MLPActor, MLPCritic)
+    rb = create_buffer(yaml_config["buffer"])
+    act_shape = cast(tuple[int, ...], yaml_config["agent"]["action_dim"])
+    noise_sampler = create_noise_sampler(cfg.noise, cfg.num_env, act_shape)
 
     # mlflow
+    mlflow_config = yaml_config.get("mlflow", {})
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+    exp_name = mlflow_config.get("experiment_name", "default_experiment")
+    run_name = mlflow_config.get("run_name", "default_run")
+
     mlflow_writer = MlflowWriter()
     mlflow_writer.start_main_run(
-        uri="https://mlflow.kyusang-jang.com/capstone",
-        experiment_name="TD3-Osim",
-        run_name="td3_body-basic-reward2",
+        uri=tracking_uri,
+        experiment_name=exp_name,
+        run_name=run_name,
     )
+    mlflow_writer.log_artifact(config_file)
 
     # tensorboard
     active_run = mlflow_writer.active_run_name()
     tb_writer = TBWriter(log_dir=f"runs/{active_run}")
 
     try:
-        main(cfg, agent, rb, tb_writer, mlflow_writer)
+        main(cfg, agent, rb, noise_sampler, tb_writer, mlflow_writer)
     finally:
         mlflow_writer.end_main_run()
         clear_tmp()
