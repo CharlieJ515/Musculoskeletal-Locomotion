@@ -1,5 +1,6 @@
 from .base import BaseRL
-from .exploration import NOISE_REGISTRY, BaseNoise, GaussianNoise, OUNoise, build_noise
+from .builder import create_agent, create_buffer, create_noise_sampler
+from .exploration import BaseNoise, GaussianNoise, OUNoise
 from .replay_buffer import *
 from .sac import SAC, default_target_entropy
 from .td3 import TD3
