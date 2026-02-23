@@ -1,14 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Union
+
 import torch
+
+from analysis import MlflowWriter
 from rl.transition import Transition, TransitionBatch
 
 
 class BaseReplayBuffer(ABC):
-    """
-    Abstract interface for a replay buffer.
-    """
-
     def __init__(
         self,
         capacity: int,
@@ -20,78 +19,27 @@ class BaseReplayBuffer(ABC):
         obs_dtype: torch.dtype = torch.float32,
         act_dtype: torch.dtype = torch.float32,
         rew_dtype: torch.dtype = torch.float32,
-    ) -> None:
-        """
-        Initialize the replay buffer with preallocated storage.
-
-        :param capacity: Maximum number of transitions the buffer can hold.
-        :param obs_shape: Shape of a single observation.
-        :param action_shape: Shape of a single action.
-        :param reward_shape: Shape of a single reward (default: scalar (1,)).
-        :param obs_dtype: Observations data type.
-        :param action_dtype: Actions data type.
-        :param reward_dtype: Rewards data type.
-        :param device: Device to store data.
-        """
+    ) -> None: ...
 
     @abstractmethod
     def add(
         self,
         transition: Union[Transition, TransitionBatch],
-    ) -> None:
-        """
-        Add one or more transitions to the buffer.
-
-        :param transition: Either a single Transition or a TransitionBatch.
-                           Shapes:
-                             If Transition:
-                               - obs: (*obs_shape,)
-                               - action: (*action_shape,)
-                               - reward: (*reward_shape)
-                               - next_obs: (*obs_shape,)
-                               - done: ()
-                             If TransitionBatch:
-                               - obs: (B, *obs_shape)
-                               - actions: (B, *action_shape)
-                               - rewards: (B, *reward_shape)
-                               - next_obs: (B, *obs_shape)
-                               - dones: (B,)
-        :type transition: Union[Transition, TransitionBatch]
-        """
+    ) -> None: ...
 
     @abstractmethod
-    def sample(self, batch_size: int) -> TransitionBatch:
-        """
-        Sample a batch of transitions from the buffer.
-
-        :param batch_size: Number of transitions to sample.
-        :type batch_size: int
-        :return: A batch of transitions with tensors already stacked.
-                 Shapes:
-                   - obs: (B, *obs_shape)
-                   - actions: (B, *action_shape)
-                   - rewards: (B, *reward_shape)
-                   - next_obs: (B, *obs_shape)
-                   - dones: (B,)
-        :rtype: TransitionBatch
-        """
+    def sample(self, batch_size: int) -> TransitionBatch: ...
 
     @abstractmethod
-    def __len__(self) -> int:
-        """
-        :return: Current number of stored transitions.
-        :rtype: int
-        """
+    def __len__(self) -> int: ...
 
     @abstractmethod
-    def clear(self) -> None:
-        """
-        Reset buffer (remove all stored transitions).
-        """
+    def clear(self) -> None: ...
 
     @abstractmethod
-    def device(self) -> torch.device:
-        """
-        :return: Device on which the buffer’s data is stored.
-        :rtype: torch.device
-        """
+    def device(self) -> torch.device: ...
+
+    @abstractmethod
+    def log_params(
+        self, mlflow_writer: MlflowWriter, *, prefix: str = "buffer/"
+    ) -> None: ...

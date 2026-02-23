@@ -3,10 +3,10 @@ from __future__ import annotations
 import warnings
 from typing import Union
 
-import mlflow
 import numpy as np
 import torch
 
+from analysis import MlflowWriter
 from configs import ReplayBufferConfig
 from rl.replay_buffer.base import BaseReplayBuffer
 from rl.transition import Transition, TransitionBatch
@@ -202,23 +202,21 @@ class ReplayBuffer(BaseReplayBuffer):
     def device(self) -> torch.device:
         return self._device
 
-    def log_params(self, *, prefix: str = "buffer/") -> None:
-        if not mlflow.active_run():
-            raise RuntimeError(
-                "No active MLflow run found. Call mlflow.start_run() first."
-            )
-
+    def log_params(
+        self, mlflow_writer: MlflowWriter, *, prefix: str = "buffer/"
+    ) -> None:
         p = prefix
-        mlflow.log_params(
-            {
-                f"{p}name": self.name,
-                f"{p}capacity": self.capacity,
-                f"{p}obs_shape": self._obs_shape,
-                f"{p}action_shape": self._action_shape,
-                f"{p}reward_shape": self._reward_shape,
-                f"{p}device": self._device,
-            }
-        )
+
+        params_dict = {
+            f"{p}name": self.name,
+            f"{p}capacity": self.capacity,
+            f"{p}obs_shape": self._obs_shape,
+            f"{p}action_shape": self._action_shape,
+            f"{p}reward_shape": self._reward_shape,
+            f"{p}device": str(self._device),
+        }
+
+        mlflow_writer.log_params(params_dict)
 
     def all(self, *, pin_memory: bool = True) -> TransitionBatch:
         if self._size == 0:

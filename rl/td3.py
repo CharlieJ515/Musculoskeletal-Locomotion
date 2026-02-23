@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+from analysis import MlflowWriter, TBWriter
 from configs import TD3Config
 
 from .base import BaseRL
@@ -38,7 +39,7 @@ class TD3(BaseRL):
         load_chkpt: bool = False,
         chkpt_file: Optional[Path] = None,
     ):
-        self.gamma = gamma
+        super().__init__(device, gamma)
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.reward_dim = reward_dim
@@ -50,9 +51,6 @@ class TD3(BaseRL):
         self.policy_noise = policy_noise
         self.noise_clip = noise_clip
         self.max_action = max_action
-        self.device = device or torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
         self.reward_weight = reward_weight.to(self.device)
         self.use_jit = use_jit
         self.name = name
@@ -239,32 +237,30 @@ class TD3(BaseRL):
 
         self.total_steps = ckpt["total_steps"]
 
-    def log_params(self, *, prefix: str = "agent/") -> None:
-        if not mlflow.active_run():
-            raise RuntimeError(
-                "No active MLflow run found. Call mlflow.start_run() first."
-            )
-
+    def log_params(
+        self, mlflow_writer: MlflowWriter, *, prefix: str = "agent/"
+    ) -> None:
         p = prefix
-        mlflow.log_params(
-            {
-                f"{p}name": self.name,
-                f"{p}gamma": self.gamma,
-                f"{p}state_dim": self.state_dim,
-                f"{p}action_dim": self.action_dim,
-                f"{p}reward_dim": self.reward_dim,
-                f"{p}lr": self.lr,
-                f"{p}tau": self.tau,
-                f"{p}weight_decay": self.weight_decay,
-                f"{p}policy_update_freq": self.policy_update_freq,
-                f"{p}policy_noise": self.policy_noise,
-                f"{p}noise_clip": self.noise_clip,
-                f"{p}max_action": self.max_action,
-                f"{p}reward_weight": self.reward_weight.detach().cpu().tolist(),
-                f"{p}device": self.device,
-                f"{p}use_jit": self.use_jit,
-            }
-        )
+
+        params_dict = {
+            f"{p}name": self.name,
+            f"{p}gamma": self.gamma,
+            f"{p}state_dim": self.state_dim,
+            f"{p}action_dim": self.action_dim,
+            f"{p}reward_dim": self.reward_dim,
+            f"{p}lr": self.lr,
+            f"{p}tau": self.tau,
+            f"{p}weight_decay": self.weight_decay,
+            f"{p}policy_update_freq": self.policy_update_freq,
+            f"{p}policy_noise": self.policy_noise,
+            f"{p}noise_clip": self.noise_clip,
+            f"{p}max_action": self.max_action,
+            f"{p}reward_weight": self.reward_weight.detach().cpu().tolist(),
+            f"{p}device": str(self.device),
+            f"{p}use_jit": self.use_jit,
+        }
+
+        mlflow_writer.log_params(params_dict)
 
     @classmethod
     def from_config(cls, cfg: TD3Config) -> "TD3":
@@ -306,3 +302,36 @@ class TD3(BaseRL):
         self.Q2.train(mode)
 
         super().train(mode)
+
+    def write_logs(
+        self,
+        metrics: dict[str, Any],
+        step: int,
+        tb_writer: TBWriter,
+        mlflow_writer: MlflowWriter,
+    ) -> None:
+        mlflow_metrics = {}
+
+        # critic
+        critic_m = metrics["critic"]
+
+        tb_writer.add_scalar("train/critic/loss", critic_m["critic_loss"], step)
+
+        tb_writer.add_histogram("train/critic/q1_pred", critic_m["q1_pred"], step)
+        tb_writer.add_histogram("train/critic/q2_pred", critic_m["q2_pred"], step)
+        tb_writer.add_histogram("train/critic/q_target", critic_m["q_target"], step)
+        tb_writer.add_histogram("train/critic/td_error", critic_m["td_error"], step)
+
+        mlflow_metrics["critic_loss"] = critic_m["critic_loss"]
+
+        # actor
+        if "actor" in metrics:
+            actor_m = metrics["actor"]
+
+            tb_writer.add_scalar("train/actor/loss", actor_m["actor_loss"], step)
+
+            tb_writer.add_histogram("train/actor/q", actor_m["q"], step)
+
+            mlflow_metrics["actor_loss"] = actor_m["actor_loss"]
+
+        mlflow_writer.log_metrics(mlflow_metrics, step=step)

@@ -1,10 +1,10 @@
 from dataclasses import replace
 from typing import Tuple, Union
 
-import mlflow
 import numpy as np
 import torch
 
+from analysis import MlflowWriter
 from configs import PERConfig
 from rl.replay_buffer.replay_buffer import ReplayBuffer
 from rl.transition import Transition, TransitionBatch
@@ -169,19 +169,20 @@ class PER(ReplayBuffer):
         self.max_priority = 1.0
         self.frame = 1
 
-    def log_params(self, *, prefix: str = "buffer/") -> None:
-        super().log_params(prefix=prefix)
+    def log_params(
+        self, mlflow_writer: MlflowWriter, *, prefix: str = "buffer/"
+    ) -> None:
+        super().log_params(mlflow_writer, prefix=prefix)
 
-        if mlflow.active_run():
-            p = prefix
-            mlflow.log_params(
-                {
-                    f"{p}alpha": self.alpha,
-                    f"{p}beta_start": self.beta_start,
-                    f"{p}beta_frames": self.beta_frames,
-                    f"{p}epsilon": self.epsilon,
-                }
-            )
+        p = prefix
+        per_params_dict = {
+            f"{p}alpha": self.alpha,
+            f"{p}beta_start": self.beta_start,
+            f"{p}beta_frames": self.beta_frames,
+            f"{p}epsilon": self.epsilon,
+        }
+
+        mlflow_writer.log_params(per_params_dict)
 
     @classmethod
     def from_config(cls, cfg: PERConfig) -> "PER":  # type: ignore
