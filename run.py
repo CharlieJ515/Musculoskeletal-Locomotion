@@ -261,7 +261,6 @@ if __name__ == "__main__":
     import yaml
     from dotenv import load_dotenv
 
-    from models.td3_mlp import MLPActor, MLPCritic
     from rl import create_agent, create_buffer, create_noise_sampler
     from utils.tmp_dir import clear_tmp
 
@@ -272,7 +271,7 @@ if __name__ == "__main__":
         yaml_config = yaml.safe_load(f)
 
     cfg = TrainConfig.from_dict(yaml_config["train"])
-    agent = create_agent(yaml_config["agent"], MLPActor, MLPCritic)
+    agent = create_agent(yaml_config["agent"])
     rb = create_buffer(yaml_config["buffer"])
     act_shape = cast(tuple[int, ...], yaml_config["agent"]["action_dim"])
     noise_sampler = create_noise_sampler(cfg.noise, cfg.num_env, act_shape)

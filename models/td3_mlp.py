@@ -1,10 +1,10 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 
-class MLPActor(nn.Module):
+class TD3_MLPActor(nn.Module):
     def __init__(
         self,
         state_dim: tuple[int, ...],
@@ -46,7 +46,7 @@ class MLPActor(nn.Module):
         return action
 
 
-class MLPCritic(nn.Module):
+class TD3_MLPCritic(nn.Module):
     def __init__(
         self,
         state_dim: tuple[int, ...],

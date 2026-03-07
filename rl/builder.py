@@ -3,17 +3,12 @@ from typing import Any
 import torch.nn as nn
 
 from configs import NoiseConfig, PERConfig, ReplayBufferConfig, SACConfig, TD3Config
-from rl import (
-    PER,
-    SAC,
-    TD3,
-    BaseNoise,
-    BaseReplayBuffer,
-    BaseRL,
-    GaussianNoise,
-    OUNoise,
-    ReplayBuffer,
-)
+
+from .base import BaseRL
+from .exploration import BaseNoise, GaussianNoise, OUNoise
+from .replay_buffer import PER, BaseReplayBuffer, ReplayBuffer
+from .sac import SAC
+from .td3 import TD3
 
 AGENT_REGISTRY = {
     "TD3": (TD3, TD3Config),
@@ -31,11 +26,7 @@ NOISE_REGISTRY: dict[str, type[BaseNoise]] = {
 }
 
 
-def create_agent(
-    agent_cfg_dict: dict[str, Any],
-    actor_net: type[nn.Module],
-    critic_net: type[nn.Module],
-) -> BaseRL:
+def create_agent(agent_cfg_dict: dict[str, Any]) -> BaseRL:
     cfg = agent_cfg_dict.copy()
 
     agent_type = cfg.pop("type", None)
@@ -45,7 +36,7 @@ def create_agent(
         raise ValueError(f"Unknown agent type '{agent_type}'")
 
     agent_cls, config_cls = AGENT_REGISTRY[agent_type]
-    agent_config = config_cls.from_dict(cfg, actor_net=actor_net, critic_net=critic_net)
+    agent_config = config_cls.from_dict(cfg)
     agent = agent_cls.from_config(agent_config)
 
     return agent
@@ -78,7 +69,7 @@ def create_noise_sampler(
     kwargs = {
         "batch_size": batch_size,
         "action_dim": action_dim,
-        "sigma_start": cfg.sigma,
+        "sigma_start": cfg.sigma_start,
         "sigma_min": cfg.sigma_min,
         "decay_steps": cfg.decay_steps,
     }

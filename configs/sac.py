@@ -5,6 +5,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from models import MODEL_REGISTRY
+
 
 @dataclass
 class SACConfig:
@@ -30,17 +32,15 @@ class SACConfig:
     ckpt_file: Optional[Path] = None
 
     @classmethod
-    def from_dict(
-        cls, data: dict, actor_net: type[nn.Module], critic_net: type[nn.Module]
-    ):
+    def from_dict(cls, data: dict):
         d = data.copy()
 
         d["state_dim"] = tuple(d["state_dim"])
         d["action_dim"] = tuple(d["action_dim"])
         d["reward_dim"] = tuple(d.get("reward_dim", [1]))
 
-        d["actor_net"] = actor_net
-        d["critic_net"] = critic_net
+        d["actor_net"] = MODEL_REGISTRY[d["actor_net"]]
+        d["critic_net"] = MODEL_REGISTRY[d["critic_net"]]
 
         if "reward_weight" in d:
             d["reward_weight"] = torch.tensor(d["reward_weight"], dtype=torch.float32)

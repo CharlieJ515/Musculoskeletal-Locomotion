@@ -1,10 +1,10 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 
-class MLPActor(nn.Module):
+class SAC_MLPActor(nn.Module):
     def __init__(
         self,
         state_dim: tuple[int, ...],
@@ -71,7 +71,7 @@ class MLPActor(nn.Module):
         return a, log_prob
 
 
-class MLPCritic(nn.Module):
+class SAC_MLPCritic(nn.Module):
     def __init__(
         self,
         state_dim: tuple[int, ...],
