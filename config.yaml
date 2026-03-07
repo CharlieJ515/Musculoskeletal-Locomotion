@@ -1,0 +1,114 @@
+mlflow:
+  experiment_name: default_experiment
+  run_name: default_run
+
+train:
+  total_steps: 100000
+  start_random: 100
+  batch_size: 256
+  eval_interval: 5000
+  eval_episodes: 1
+  log_interval: 20
+  seed: 42
+
+  model: gait14dof22
+  pose: default # default, tilted, bent, forward
+  visualize: false
+  num_env: 32
+  mp_context: spawn # spawn, fork, forkserver
+
+  noise:
+    name: GaussianNoise # GaussianNoise, OUNoise
+    sigma_start: 0.4
+    sigma_min: 0.05
+    decay_steps: 50000
+    theta: 0.15
+    dt: 0.01
+    clip:
+
+  wrappers:
+    - name: TimeLimit
+      params:
+        max_episode_steps: 1000
+    - name: TargetSpeedWrapper
+      params:
+        speed_range: [0.25, 0.75]
+    - name: CompositeRewardWrapper
+    - name: FrameSkipWrapper
+      params:
+        skip: 4
+    - name: SimpleEnvWrapper
+    - name: TimeAwareObservation
+      params:
+        normalize_time: True
+    - name: FrameStackObservation
+      params:
+        stack_size: 4
+    - name: RescaleAction
+      params:
+        min_action: -1.0
+        max_action: 1.0
+
+  rewards:
+    - name: AliveReward
+      key: alive_reward
+      weight: 1.0
+      params:
+        alive_reward: 0.04
+        failure_penalty: 0.0
+    - name: VelocityReward
+      key: velocity_reward
+      weight: 1.0
+      params:
+        scale: 0.05
+    - name: FootstepReward
+      key: footstep_reward
+      weight: 1.0
+      params:
+        scale: 1.0
+        stepsize: 0.01
+
+  reward_key:
+    - alive_reward
+    - velocity_reward
+    - footstep_reward
+
+agent:
+  type: TD3
+  state_dim: [4, 431]
+  action_dim: [22]
+  actor_net: TD3_MLPActor
+  critic_net: TD3_MLPCritic
+  reward_dim: [3]
+  reward_weight: [1.0, 1.0, 1.0]
+  gamma: 0.99
+  lr: 0.000075
+  tau: 0.005
+  weight_decay: 0.0
+  policy_update_freq: 2
+  policy_noise: 0.1
+  noise_clip: 0.25
+  max_action: 1.0
+  device: cuda
+  use_jit: true
+  train: true
+  name: TD3
+  load_chkpt: false
+  chkpt_file: null
+
+buffer:
+  type: PER
+  capacity: 100000
+  obs_shape: [4, 431]
+  action_shape: [22]
+  reward_shape: [3]
+  device: cpu
+  obs_dtype: float32
+  action_dtype: float32
+  reward_dtype: float32
+
+  beta_frames: 100000
+  alpha: 0.6
+  beta_start: 0.4
+  epsilon: 1.0e-5
+  name: PrioritizedReplayBuffer

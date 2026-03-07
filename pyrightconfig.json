@@ -1,0 +1,26 @@
+{
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "**/__pycache__"
+  ],
+  "ignore": [],
+  "defineConstant": {},
+  "stubPath": "src/stubs",
+  "reportMissingImports": "error",
+  "reportMissingTypeStubs": false,
+  "venv": "osim_env",
+  "venvPath": "/home/kyusang/.conda/envs",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux",
+  "executionEnvironments": [
+    {
+      "root": "."
+    },
+    {
+      "root": ".",
+      "pythonPlatform": "Windows"
+    }
+  ]
+}
