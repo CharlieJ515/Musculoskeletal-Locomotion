@@ -134,7 +134,7 @@ def main(
     mlflow_writer: MlflowWriter,
 ):
     env = gym.vector.AsyncVectorEnv(
-        [lambda: create_env(cfg, False) for _ in range(cfg.num_env)],
+        [lambda i=i: create_env(cfg, i == 0) for i in range(cfg.num_env)],
         autoreset_mode=gym.vector.AutoresetMode.NEXT_STEP,
         context=cfg.mp_context,
     )
