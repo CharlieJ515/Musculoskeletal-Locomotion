@@ -1,3 +1,4 @@
+import warnings
 from typing import cast
 
 import gymnasium as gym
@@ -7,6 +8,9 @@ from environment.osim import OsimEnv
 from environment.rewards import REWARD_REGISTRY, CompositeReward
 from environment.wrappers import WRAPPER_REGISTRY, LimitForceConfig
 from environment.wrappers.composite_reward import CompositeRewardWrapper
+
+# ignore unavoidable warning raised by gymnasium.wrappers.utils.rescale_box
+warnings.filterwarnings("ignore", message=".*precision lowered by casting to float32.*")
 
 
 def build_composite_reward(reward_configs: list[dict]) -> CompositeReward | None:
